@@ -1,6 +1,6 @@
 require("dotenv").config();
-const authRoutes = require("./modules/auth/auth.routes");
-const userRoutes = require("./modules/users/user.routes");
+const billingRoutes = require("./modules/billing/billing.routes");
+const packageRoutes = require("./modules/packages/package.routes");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -8,6 +8,9 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const authenticate = require("./middleware/authenticate");
 const authorize = require("./middleware/authorize");
+const authRoutes = require("./modules/auth/auth.routes");
+const userRoutes = require("./modules/users/user.routes");
+const customerRoutes = require("./modules/customers/customer.routes");
 
 
 const pool = require("./config/database");
@@ -86,6 +89,21 @@ app.use(
 app.use(
   "/api/v1/auth",
   authRoutes
+);
+
+app.use(
+  "/api/v1/customers",
+  customerRoutes
+);
+
+app.use(
+  "/api/v1/packages",
+  packageRoutes
+);
+
+app.use(
+  "/api/v1/billing",
+  billingRoutes
 );
 
 app.use(
