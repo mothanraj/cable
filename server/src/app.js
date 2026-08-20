@@ -1,4 +1,7 @@
 require("dotenv").config();
+const reportRoutes = require("./modules/reports/report.routes");
+const dashboardRoutes = require("./modules/dashboard/dashboard.routes");
+const paymentRoutes = require("./modules/payments/payment.routes");
 const billingRoutes = require("./modules/billing/billing.routes");
 const packageRoutes = require("./modules/packages/package.routes");
 const express = require("express");
@@ -97,13 +100,28 @@ app.use(
 );
 
 app.use(
+  "/api/v1/reports",
+  reportRoutes
+);
+
+app.use(
   "/api/v1/packages",
   packageRoutes
 );
 
 app.use(
+  "/api/v1/payments",
+  paymentRoutes
+);
+
+app.use(
   "/api/v1/billing",
   billingRoutes
+);
+
+app.use(
+  "/api/v1/dashboard",
+  dashboardRoutes
 );
 
 app.use(
