@@ -1,11 +1,14 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT_DIR = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=ROOT_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -19,6 +22,7 @@ class Settings(BaseSettings):
     db_name: str = "customer_management"
     db_user: str = "postgres"
     db_password: str = ""
+    db_sslmode: str = "prefer"
 
     jwt_access_secret: str
     jwt_refresh_secret: str

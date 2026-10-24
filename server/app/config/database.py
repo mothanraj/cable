@@ -18,8 +18,9 @@ def _connection_kwargs() -> dict:
         "dbname": settings.db_name,
         "user": settings.db_user,
         "password": settings.db_password,
+        "sslmode": settings.db_sslmode,
         "row_factory": dict_row,
-        "connect_timeout": 3,
+        "connect_timeout": 10,
     }
 
 
@@ -30,8 +31,8 @@ def init_pool() -> ConnectionPool:
         _pool = ConnectionPool(
             "",
             min_size=0,
-            max_size=10,
-            timeout=3.0,
+            max_size=5,
+            timeout=10.0,
             kwargs=_connection_kwargs(),
             open=True,
         )

@@ -1,5 +1,6 @@
 node_modules/
 .venv/
+backups/
 __pycache__/
 *.py[cod]
 .env

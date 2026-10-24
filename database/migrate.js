@@ -1,16 +1,10 @@
-require("dotenv").config();
-
 const fs = require("fs");
 const path = require("path");
 const { Client } = require("pg");
 
-const client = new Client({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  port: Number(process.env.DB_PORT),
-  password: process.env.DB_PASSWORD,
-});
+const { createClientConfig } = require("./db");
+
+const client = new Client(createClientConfig());
 
 const migrationsDir = path.join(__dirname, "migrations");
 
