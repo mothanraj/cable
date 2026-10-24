@@ -11,6 +11,8 @@ const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
 const authenticate = require("./middleware/authenticate");
 const authorize = require("./middleware/authorize");
+const errorHandler = require("./middleware/errorHandler");
+const notFoundHandler = require("./middleware/notFoundHandler");
 const authRoutes = require("./modules/auth/auth.routes");
 const userRoutes = require("./modules/users/user.routes");
 const customerRoutes = require("./modules/customers/customer.routes");
@@ -19,19 +21,6 @@ const customerRoutes = require("./modules/customers/customer.routes");
 const pool = require("./config/database");
 
 const app = express();
-
-app.get(
-  "/api/v1/admin/test",
-  authenticate,
-  authorize("ADMIN"),
-  (req, res) => {
-    res.json({
-      success: true,
-      message: "Admin authorization works.",
-      user: req.user,
-    });
-  }
-);
 
 app.disable("x-powered-by");
 
@@ -152,5 +141,21 @@ app.get("/api/v1/health", async (req, res) => {
     });
   }
 });
+
+app.get(
+  "/api/v1/admin/test",
+  authenticate,
+  authorize("ADMIN"),
+  (req, res) => {
+    res.json({
+      success: true,
+      message: "Admin authorization works.",
+      user: req.user,
+    });
+  }
+);
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 module.exports = app;

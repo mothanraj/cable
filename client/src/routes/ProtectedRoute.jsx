@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 
 export default function ProtectedRoute({
   allowedRoles,
+  loginPath = "/user/login",
 }) {
   const {
     user,
@@ -15,7 +16,12 @@ export default function ProtectedRoute({
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to={loginPath}
+        replace
+      />
+    );
   }
 
   if (
@@ -23,10 +29,20 @@ export default function ProtectedRoute({
     !allowedRoles.includes(user.role)
   ) {
     if (user.role === "ADMIN") {
-      return <Navigate to="/admin" replace />;
+      return (
+        <Navigate
+          to="/admin"
+          replace
+        />
+      );
     }
 
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <Navigate
+        to="/dashboard"
+        replace
+      />
+    );
   }
 
   return <Outlet />;

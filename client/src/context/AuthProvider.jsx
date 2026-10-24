@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import apiClient, {
   setAccessToken as setApiAccessToken,
+  setOnAuthFailure,
+  setOnSessionRefreshed,
 } from "../api/client";
 import AuthContext from "./AuthContext";
 
@@ -16,6 +18,11 @@ export function AuthProvider({ children }) {
     setApiAccessToken(token);
   }
 
+  function clearAuthState() {
+    setUser(null);
+    updateAccessToken(null);
+  }
+
   async function refreshSession() {
     try {
       const response = await apiClient.post("/auth/refresh");
@@ -26,8 +33,7 @@ export function AuthProvider({ children }) {
 
       return data.accessToken;
     } catch {
-      setUser(null);
-      updateAccessToken(null);
+      clearAuthState();
       return null;
     }
   }
@@ -50,10 +56,23 @@ export function AuthProvider({ children }) {
     try {
       await apiClient.post("/auth/logout");
     } finally {
-      setUser(null);
-      updateAccessToken(null);
+      clearAuthState();
     }
   }
+
+  useEffect(() => {
+    setOnSessionRefreshed((data) => {
+      setUser(data.user);
+      setAccessTokenState(data.accessToken);
+      setApiAccessToken(data.accessToken);
+    });
+
+    setOnAuthFailure(() => {
+      setUser(null);
+      setAccessTokenState(null);
+      setApiAccessToken(null);
+    });
+  }, []);
 
   useEffect(() => {
     if (refreshStarted.current) return;

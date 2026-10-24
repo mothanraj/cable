@@ -1,5 +1,24 @@
 const pool = require("../../config/database");
 
+const BILLING_SUMMARY_SELECT = `
+  cbs.billing_id AS id,
+  cbs.billing_id,
+  cbs.customer_id,
+  c.customer_name,
+  c.stb_number,
+  c.phone,
+  c.place,
+  c.assigned_user_id,
+  u.username AS assigned_username,
+  u.full_name AS assigned_user_name,
+  cbs.billing_month,
+  cbs.package_name,
+  cbs.monthly_amount,
+  cbs.total_paid,
+  cbs.balance_amount,
+  cbs.payment_status
+`;
+
 async function getBilling({
   userId,
   role,
@@ -10,12 +29,16 @@ async function getBilling({
 
   if (billingMonth) {
     values.push(billingMonth);
-    conditions.push(`mb.billing_month = $${values.length}`);
+    conditions.push(
+      `cbs.billing_month = $${values.length}`
+    );
   }
 
   if (role !== "ADMIN") {
     values.push(userId);
-    conditions.push(`c.assigned_user_id = $${values.length}`);
+    conditions.push(
+      `c.assigned_user_id = $${values.length}`
+    );
   }
 
   const whereClause =
@@ -26,28 +49,15 @@ async function getBilling({
   const result = await pool.query(
     `
     SELECT
-      mb.id,
-      mb.customer_id,
-      c.customer_name,
-      c.stb_number,
-      c.phone,
-      c.place,
-      c.assigned_user_id,
-      u.username AS assigned_username,
-      u.full_name AS assigned_user_name,
-      mb.billing_month,
-      mb.package_name,
-      mb.monthly_amount,
-      mb.created_at,
-      mb.updated_at
-    FROM monthly_billing mb
+      ${BILLING_SUMMARY_SELECT}
+    FROM customer_billing_summary cbs
     INNER JOIN customers c
-      ON c.id = mb.customer_id
+      ON c.id = cbs.customer_id
     INNER JOIN users u
       ON u.id = c.assigned_user_id
     ${whereClause}
     ORDER BY
-      mb.billing_month DESC,
+      cbs.billing_month DESC,
       c.customer_name ASC
     `,
     values
@@ -76,29 +86,34 @@ async function getBillingById({
   const result = await pool.query(
     `
     SELECT
-      mb.id,
-      mb.customer_id,
-      c.customer_name,
-      c.stb_number,
-      c.phone,
-      c.place,
-      c.assigned_user_id,
-      u.username AS assigned_username,
-      u.full_name AS assigned_user_name,
-      mb.billing_month,
-      mb.package_name,
-      mb.monthly_amount,
-      mb.created_at,
-      mb.updated_at
-    FROM monthly_billing mb
+      ${BILLING_SUMMARY_SELECT}
+    FROM customer_billing_summary cbs
     INNER JOIN customers c
-      ON c.id = mb.customer_id
+      ON c.id = cbs.customer_id
     INNER JOIN users u
       ON u.id = c.assigned_user_id
-    WHERE mb.id = $1
+    WHERE cbs.billing_id = $1
       ${ownershipCondition}
     `,
     values
+  );
+
+  return result.rows[0] || null;
+}
+
+async function getBillingSummaryById(billingId) {
+  const result = await pool.query(
+    `
+    SELECT
+      ${BILLING_SUMMARY_SELECT}
+    FROM customer_billing_summary cbs
+    INNER JOIN customers c
+      ON c.id = cbs.customer_id
+    INNER JOIN users u
+      ON u.id = c.assigned_user_id
+    WHERE cbs.billing_id = $1
+    `,
+    [billingId]
   );
 
   return result.rows[0] || null;
@@ -151,7 +166,7 @@ async function generateBilling({
       ? customer.custom_monthly_amount
       : customer.monthly_amount;
 
-  const result = await pool.query(
+  const inserted = await pool.query(
     `
     INSERT INTO monthly_billing (
       customer_id,
@@ -160,14 +175,7 @@ async function generateBilling({
       monthly_amount
     )
     VALUES ($1, $2, $3, $4)
-    RETURNING
-      id,
-      customer_id,
-      billing_month,
-      package_name,
-      monthly_amount,
-      created_at,
-      updated_at
+    RETURNING id
     `,
     [
       customerId,
@@ -177,7 +185,7 @@ async function generateBilling({
     ]
   );
 
-  return result.rows[0];
+  return getBillingSummaryById(inserted.rows[0].id);
 }
 
 module.exports = {

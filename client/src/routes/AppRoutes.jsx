@@ -4,12 +4,42 @@ import {
   Routes,
 } from "react-router-dom";
 
-
+import { useAuth } from "../context/AuthContext";
+import AdminLayout from "../layouts/AdminLayout";
+import AdminHome from "../pages/AdminHome";
+import AdminLogin from "../pages/AdminLogin";
 import CustomersPage from "../pages/customers/CustomersPage";
 import Login from "../pages/Login";
-import AdminHome from "../pages/AdminHome";
+import PaymentsPage from "../pages/PaymentsPage";
+import ReportsPage from "../pages/ReportsPage";
 import UserHome from "../pages/UserHome";
+import UserLogin from "../pages/UserLogin";
+import UsersPage from "../pages/UsersPage";
 import ProtectedRoute from "./ProtectedRoute";
+
+function HomeRedirect() {
+  const { loading, isAuthenticated, user } = useAuth();
+
+  if (loading) {
+    return <div className="login-page">Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/user/login"
+        replace
+      />
+    );
+  }
+
+  return (
+    <Navigate
+      to={user.role === "ADMIN" ? "/admin" : "/dashboard"}
+      replace
+    />
+  );
+}
 
 export default function AppRoutes() {
   return (
@@ -18,61 +48,78 @@ export default function AppRoutes() {
         path="/login"
         element={<Login />}
       />
-    
-    <Route
-  path="/customers"
-  element={<CustomersPage />}
-/>
-
-<Route
-  path="/customers"
-  element={<CustomersPage />}
-/>
+      <Route
+        path="/admin/login"
+        element={<AdminLogin />}
+      />
+      <Route
+        path="/user/login"
+        element={<UserLogin />}
+      />
 
       <Route
         element={
           <ProtectedRoute
-            allowedRoles={["ADMIN"]}
+            allowedRoles={["ADMIN", "USER"]}
+            loginPath="/user/login"
           />
         }
       >
-        <Route
-          path="/admin"
-          element={<AdminHome />}
-        />
-      </Route>
+        <Route element={<AdminLayout />}>
+          <Route
+            path="/customers"
+            element={<CustomersPage />}
+          />
+          <Route
+            path="/payments"
+            element={<PaymentsPage />}
+          />
+          <Route
+            path="/reports"
+            element={<ReportsPage />}
+          />
 
-      <Route
-        element={
-          <ProtectedRoute
-            allowedRoles={["USER"]}
-          />
-        }
-      >
-        <Route
-          path="/dashboard"
-          element={<UserHome />}
-        />
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN"]}
+                loginPath="/admin/login"
+              />
+            }
+          >
+            <Route
+              path="/admin"
+              element={<AdminHome />}
+            />
+            <Route
+              path="/users"
+              element={<UsersPage />}
+            />
+          </Route>
+
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["USER"]}
+                loginPath="/user/login"
+              />
+            }
+          >
+            <Route
+              path="/dashboard"
+              element={<UserHome />}
+            />
+          </Route>
+        </Route>
       </Route>
 
       <Route
         path="/"
-        element={
-          <Navigate
-            to="/login"
-            replace
-          />
-        }
+        element={<HomeRedirect />}
       />
-
       <Route
         path="*"
-        element={
-          <Navigate
-            to="/login"
-            replace
-          />
-        }
+        element={<HomeRedirect />}
       />
     </Routes>
   );

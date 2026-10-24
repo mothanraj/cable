@@ -10,9 +10,19 @@ const apiClient = axios.create({
 
 let accessToken = null;
 let refreshPromise = null;
+let onSessionRefreshed = null;
+let onAuthFailure = null;
 
 export function setAccessToken(token) {
   accessToken = token;
+}
+
+export function setOnSessionRefreshed(callback) {
+  onSessionRefreshed = callback;
+}
+
+export function setOnAuthFailure(callback) {
+  onAuthFailure = callback;
 }
 
 apiClient.interceptors.request.use((config) => {
@@ -46,23 +56,33 @@ apiClient.interceptors.response.use(
         refreshPromise = apiClient
           .post("/auth/refresh")
           .then((response) => {
-            const newToken =
-              response.data.data.accessToken;
+            const data = response.data.data;
 
-            setAccessToken(newToken);
+            setAccessToken(data.accessToken);
 
-            return newToken;
+            if (typeof onSessionRefreshed === "function") {
+              onSessionRefreshed(data);
+            }
+
+            return data.accessToken;
           })
           .finally(() => {
             refreshPromise = null;
           });
       }
 
-      await refreshPromise;
+      const newToken = await refreshPromise;
+
+      originalRequest.headers.Authorization =
+        `Bearer ${newToken}`;
 
       return apiClient(originalRequest);
     } catch (refreshError) {
       setAccessToken(null);
+
+      if (typeof onAuthFailure === "function") {
+        onAuthFailure();
+      }
 
       return Promise.reject(refreshError);
     }
