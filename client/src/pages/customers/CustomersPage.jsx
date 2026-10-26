@@ -24,6 +24,7 @@ import {
 import { getPayments } from "../../api/payments";
 import CollectPaymentModal from "../../components/CollectPaymentModal";
 import CustomerFormModal from "../../components/CustomerFormModal";
+import { useAuth } from "../../context/AuthContext";
 import {
   formatMoney,
   getCurrentBillingMonth,
@@ -147,6 +148,8 @@ function SortableCustomerCard({
 }
 
 export default function CustomersPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [customers, setCustomers] = useState([]);
   const [billing, setBilling] = useState([]);
   const [paymentsByBilling, setPaymentsByBilling] = useState(
@@ -154,6 +157,7 @@ export default function CustomersPage() {
   );
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState(FILTERS.ALL);
+  const [placeFilter, setPlaceFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -278,6 +282,45 @@ export default function CustomersPage() {
     selectedDate,
   ]);
 
+  const placeFilters = useMemo(() => {
+    const map = new Map();
+    for (const customer of customers) {
+      const key = customer.place_id || "unassigned";
+      if (!map.has(key)) {
+        map.set(key, customer.place || "Unassigned");
+      }
+    }
+    return [...map.entries()].sort((a, b) =>
+      a[1].localeCompare(b[1])
+    );
+  }, [customers]);
+
+  const placeFilteredCustomers = useMemo(() => {
+    if (placeFilter === "all") return filteredCustomers;
+    return filteredCustomers.filter(
+      (customer) =>
+        (customer.place_id || "unassigned") === placeFilter
+    );
+  }, [filteredCustomers, placeFilter]);
+
+  const groupedCustomers = useMemo(() => {
+    const map = new Map();
+    for (const customer of placeFilteredCustomers) {
+      const key = customer.place_id || "unassigned";
+      if (!map.has(key)) {
+        map.set(key, {
+          id: key,
+          name: customer.place || "Unassigned",
+          customers: [],
+        });
+      }
+      map.get(key).customers.push(customer);
+    }
+    return [...map.values()].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+  }, [placeFilteredCustomers]);
+
   async function handleCreate(payload) {
     await createCustomer(payload);
     setSuccess("Customer created.");
@@ -307,31 +350,38 @@ export default function CustomersPage() {
     }
   }
 
-  async function handleDragEnd(event) {
+  async function handleDragEnd(group, event) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = customers.findIndex(
+    const oldIndex = group.customers.findIndex(
       (item) => item.id === active.id
     );
-    const newIndex = customers.findIndex(
+    const newIndex = group.customers.findIndex(
       (item) => item.id === over.id
     );
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const previous = customers;
-    const reordered = arrayMove(customers, oldIndex, newIndex);
-    setCustomers(reordered);
+    const reordered = arrayMove(
+      group.customers,
+      oldIndex,
+      newIndex
+    );
 
     try {
-      await updateCustomerOrder(active.id, newIndex);
+      for (let index = 0; index < reordered.length; index += 1) {
+        const item = reordered[index];
+        if (item.display_order !== index) {
+          await updateCustomerOrder(item.id, index);
+        }
+      }
       await loadData();
     } catch (err) {
-      setCustomers(previous);
       setError(
         err.response?.data?.error?.message ||
           "Unable to update order."
       );
+      await loadData();
     }
   }
 
@@ -342,19 +392,21 @@ export default function CustomersPage() {
           <h1>Customers</h1>
           <p>Search, bill, collect, and reorder assigned customers.</p>
         </div>
-        <div className="page-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              setFormMode("create");
-              setEditingCustomer(null);
-              setFormOpen(true);
-            }}
-          >
-            Add customer
-          </button>
-        </div>
+        {isAdmin && (
+          <div className="page-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setFormMode("create");
+                setEditingCustomer(null);
+                setFormOpen(true);
+              }}
+            >
+              Add customer
+            </button>
+          </div>
+        )}
       </div>
 
       {success && <p className="success-toast">{success}</p>}
@@ -367,6 +419,24 @@ export default function CustomersPage() {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
+
+        <label className="field place-filter">
+          <span>Place</span>
+          <select
+            className="select"
+            value={placeFilter}
+            onChange={(event) =>
+              setPlaceFilter(event.target.value)
+            }
+          >
+            <option value="all">All places</option>
+            {placeFilters.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="filter-row">
           {[
@@ -408,51 +478,69 @@ export default function CustomersPage() {
       {loading && <p className="muted">Loading customers...</p>}
       {error && <p className="error-message">{error}</p>}
 
-      {!loading && !error && filteredCustomers.length === 0 && (
+      {!loading && !error && placeFilteredCustomers.length === 0 && (
         <p className="empty-state">No customers found.</p>
       )}
 
-      {!loading && filteredCustomers.length > 0 && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={filteredCustomers.map((item) => item.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="customer-list">
-              {filteredCustomers.map((customer) => {
-                const bill = billingByCustomer.get(customer.id);
-                const paymentInfo = customerPaymentInfo.get(
-                  customer.id
-                );
+      {!loading && placeFilteredCustomers.length > 0 && (
+        <div className="place-groups">
+          {groupedCustomers.map((group) => (
+            <div className="place-group" key={group.id}>
+              <div className="place-group-header">
+                <h2>{group.name}</h2>
+                <span>{group.customers.length} customers</span>
+              </div>
 
-                return (
-                  <SortableCustomerCard
-                    key={customer.id}
-                    customer={customer}
-                    bill={bill}
-                    latestPayment={paymentInfo?.latestPayment}
-                    onEdit={(item) => {
-                      setFormMode("edit");
-                      setEditingCustomer(item);
-                      setFormOpen(true);
-                    }}
-                    onCollect={(item, billRow) =>
-                      setPaymentTarget({
-                        customer: item,
-                        bill: billRow,
-                      })
-                    }
-                    onGenerateBill={handleGenerateBill}
-                  />
-                );
-              })}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={(event) =>
+                  handleDragEnd(group, event)
+                }
+              >
+                <SortableContext
+                  items={group.customers.map(
+                    (item) => item.id
+                  )}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="customer-list">
+                    {group.customers.map((customer) => {
+                      const bill = billingByCustomer.get(
+                        customer.id
+                      );
+                      const paymentInfo =
+                        customerPaymentInfo.get(customer.id);
+
+                      return (
+                        <SortableCustomerCard
+                          key={customer.id}
+                          customer={customer}
+                          bill={bill}
+                          latestPayment={
+                            paymentInfo?.latestPayment
+                          }
+                          onEdit={(item) => {
+                            setFormMode("edit");
+                            setEditingCustomer(item);
+                            setFormOpen(true);
+                          }}
+                          onCollect={(item, billRow) =>
+                            setPaymentTarget({
+                              customer: item,
+                              bill: billRow,
+                            })
+                          }
+                          onGenerateBill={handleGenerateBill}
+                        />
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
-          </SortableContext>
-        </DndContext>
+          ))}
+        </div>
       )}
 
       <CustomerFormModal

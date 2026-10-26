@@ -22,18 +22,31 @@ def get_dashboard(
 
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+    customer_values: list[Any] = []
+    customer_conditions = ["c.is_active = TRUE"]
+
+    if role != "ADMIN":
+        customer_values.append(user_id)
+        customer_conditions.append("c.assigned_user_id = %s")
+
+    customer_where = " AND ".join(customer_conditions)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
                 SELECT
-                  COUNT(DISTINCT c.id) AS total_customers,
-                  COUNT(
-                    DISTINCT CASE
-                      WHEN c.is_active = TRUE
-                      THEN c.id
-                    END
-                  ) AS active_customers,
+                  COUNT(*) AS total_customers
+                FROM customers c
+                WHERE {customer_where}
+                """,
+                customer_values,
+            )
+            customer_summary = cur.fetchone()
+
+            cur.execute(
+                f"""
+                SELECT
                   COALESCE(SUM(cbs.monthly_amount), 0) AS total_billed,
                   COALESCE(SUM(cbs.total_paid), 0) AS total_collected,
                   COALESCE(SUM(cbs.balance_amount), 0) AS total_outstanding,
@@ -149,8 +162,9 @@ def get_dashboard(
 
     return {
         "summary": {
-            "totalCustomers": int(summary["total_customers"] or 0),
-            "activeCustomers": int(summary["active_customers"] or 0),
+            "totalCustomers": int(
+                customer_summary["total_customers"] or 0
+            ),
             "totalBilled": float(summary["total_billed"] or 0),
             "totalCollected": float(summary["total_collected"] or 0),
             "totalOutstanding": float(summary["total_outstanding"] or 0),

@@ -10,7 +10,9 @@ import AdminHome from "../pages/AdminHome";
 import AdminLogin from "../pages/AdminLogin";
 import CustomersPage from "../pages/customers/CustomersPage";
 import Login from "../pages/Login";
+import PackagesPage from "../pages/PackagesPage";
 import PaymentsPage from "../pages/PaymentsPage";
+import PlacesPage from "../pages/PlacesPage";
 import ReportsPage from "../pages/ReportsPage";
 import UserHome from "../pages/UserHome";
 import UserLogin from "../pages/UserLogin";
@@ -94,6 +96,14 @@ export default function AppRoutes() {
             <Route
               path="/users"
               element={<UsersPage />}
+            />
+            <Route
+              path="/places"
+              element={<PlacesPage />}
+            />
+            <Route
+              path="/packages"
+              element={<PackagesPage />}
             />
           </Route>
 

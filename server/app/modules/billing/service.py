@@ -133,7 +133,6 @@ def generate_billing(
                 f"""
                 SELECT
                   c.id,
-                  c.custom_monthly_amount,
                   p.package_name,
                   p.monthly_amount
                 FROM customers c
@@ -141,7 +140,6 @@ def generate_billing(
                   ON p.id = c.package_id
                 WHERE c.id = %s
                   AND c.is_active = TRUE
-                  AND p.is_active = TRUE
                   {ownership}
                 """,
                 values,
@@ -151,11 +149,7 @@ def generate_billing(
             if customer is None:
                 return None
 
-            effective_amount = (
-                customer["custom_monthly_amount"]
-                if customer["custom_monthly_amount"] is not None
-                else customer["monthly_amount"]
-            )
+            effective_amount = customer["monthly_amount"]
 
             cur.execute(
                 """

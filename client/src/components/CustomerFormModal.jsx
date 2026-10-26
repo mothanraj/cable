@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getPackages } from "../api/packages";
+import { getPlaces } from "../api/places";
 import { getUsers } from "../api/users";
 import { useAuth } from "../context/AuthContext";
 import Modal from "./Modal";
@@ -8,9 +9,8 @@ const emptyForm = {
   customerName: "",
   stbNumber: "",
   phone: "",
-  place: "",
+  placeId: "",
   packageId: "",
-  customMonthlyAmount: "",
   assignedUserId: "",
   remarks: "",
 };
@@ -26,6 +26,7 @@ export default function CustomerFormModal({
   const isAdmin = user?.role === "ADMIN";
   const [form, setForm] = useState(emptyForm);
   const [packages, setPackages] = useState([]);
+  const [places, setPlaces] = useState([]);
   const [users, setUsers] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -40,10 +41,8 @@ export default function CustomerFormModal({
             customerName: initialCustomer.customer_name || "",
             stbNumber: initialCustomer.stb_number || "",
             phone: initialCustomer.phone || "",
-            place: initialCustomer.place || "",
+            placeId: initialCustomer.place_id || "",
             packageId: initialCustomer.package_id || "",
-            customMonthlyAmount:
-              initialCustomer.custom_monthly_amount ?? "",
             assignedUserId:
               initialCustomer.assigned_user_id || "",
             remarks: initialCustomer.remarks || "",
@@ -53,11 +52,15 @@ export default function CustomerFormModal({
 
     async function loadRefs() {
       try {
-        const packageRows = await getPackages();
-        setPackages(packageRows);
+        const placeRows = await getPlaces();
+        setPlaces(placeRows);
 
         if (isAdmin) {
-          const userRows = await getUsers();
+          const [packageRows, userRows] = await Promise.all([
+            getPackages(),
+            getUsers(),
+          ]);
+          setPackages(packageRows);
           setUsers(
             userRows.filter(
               (row) => row.role === "USER" && row.is_active
@@ -77,6 +80,34 @@ export default function CustomerFormModal({
 
   if (!open) return null;
 
+  const placeOptions = [...places];
+  if (
+    form.placeId &&
+    !placeOptions.some((item) => item.id === form.placeId)
+  ) {
+    placeOptions.push({
+      id: form.placeId,
+      place_name: initialCustomer?.place || form.placeId,
+      is_active: false,
+    });
+  }
+
+  const packageOptions = isAdmin ? [...packages] : [];
+  if (
+    isAdmin &&
+    form.packageId &&
+    !packageOptions.some((item) => item.id === form.packageId)
+  ) {
+    packageOptions.push({
+      id: form.packageId,
+      package_name:
+        initialCustomer?.package_name || form.packageId,
+      monthly_amount:
+        initialCustomer?.package_monthly_amount ?? 0,
+      is_active: false,
+    });
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setSaving(true);
@@ -87,14 +118,13 @@ export default function CustomerFormModal({
         customerName: form.customerName.trim(),
         stbNumber: form.stbNumber.trim(),
         phone: form.phone.trim() || null,
-        place: form.place.trim() || null,
-        packageId: form.packageId,
-        customMonthlyAmount:
-          form.customMonthlyAmount === ""
-            ? null
-            : Number(form.customMonthlyAmount),
+        placeId: form.placeId,
         remarks: form.remarks.trim() || null,
       };
+
+      if (isAdmin) {
+        payload.packageId = form.packageId;
+      }
 
       if (mode === "create" && isAdmin) {
         payload.assignedUserId = form.assignedUserId;
@@ -190,59 +220,57 @@ export default function CustomerFormModal({
 
         <label className="field">
           <span>Place</span>
-          <input
-            className="input"
-            value={form.place}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                place: event.target.value,
-              }))
-            }
-          />
-        </label>
-
-        <label className="field">
-          <span>Package</span>
           <select
             className="select"
-            value={form.packageId}
+            value={form.placeId}
             onChange={(event) =>
               setForm((prev) => ({
                 ...prev,
-                packageId: event.target.value,
+                placeId: event.target.value,
               }))
             }
             required
           >
-            <option value="">Select package</option>
-            {packages.map((item) => (
+            <option value="">Select place</option>
+            {placeOptions.map((item) => (
               <option
                 key={item.id}
                 value={item.id}
               >
-                {item.package_name} (₹{item.monthly_amount})
+                {item.place_name}
+                {item.is_active ? "" : " (inactive)"}
               </option>
             ))}
           </select>
         </label>
 
-        <label className="field">
-          <span>Custom monthly amount (optional)</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className="input"
-            value={form.customMonthlyAmount}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                customMonthlyAmount: event.target.value,
-              }))
-            }
-          />
-        </label>
+        {isAdmin && (
+          <label className="field">
+            <span>Package</span>
+            <select
+              className="select"
+              value={form.packageId}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  packageId: event.target.value,
+                }))
+              }
+              required
+            >
+              <option value="">Select package</option>
+              {packageOptions.map((item) => (
+                <option
+                  key={item.id}
+                  value={item.id}
+                >
+                  {item.package_name} (₹{item.monthly_amount})
+                  {item.is_active ? "" : " (inactive)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {mode === "create" && isAdmin && (
           <label className="field">

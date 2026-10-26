@@ -21,6 +21,7 @@ from app.modules.customers.routes import router as customers_router
 from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.packages.routes import router as packages_router
 from app.modules.payments.routes import router as payments_router
+from app.modules.places.routes import router as places_router
 from app.modules.reports.routes import router as reports_router
 from app.modules.users.routes import router as users_router
 from app.utils.errors import AppError
@@ -120,6 +121,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix="/api/v1")
     app.include_router(packages_router, prefix="/api/v1")
     app.include_router(customers_router, prefix="/api/v1")
+    app.include_router(places_router, prefix="/api/v1")
     app.include_router(billing_router, prefix="/api/v1")
     app.include_router(payments_router, prefix="/api/v1")
     app.include_router(dashboard_router, prefix="/api/v1")

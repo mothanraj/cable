@@ -427,6 +427,11 @@ a {
   background: #fff;
 }
 
+.place-filter {
+  flex: 1 1 180px;
+  max-width: 240px;
+}
+
 .filter-row {
   display: flex;
   flex-wrap: wrap;
@@ -522,9 +527,54 @@ table.data-table th {
   background: #f8fafb;
 }
 
+.place-groups {
+  display: grid;
+  gap: 26px;
+}
+
+.place-group {
+  display: grid;
+  gap: 10px;
+}
+
+.place-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.place-group-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.place-group-header span {
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+}
+
 .customer-list {
   display: grid;
   gap: 12px;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inline-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inline-edit-form .input {
+  flex: 1 1 160px;
 }
 
 .customer-card {

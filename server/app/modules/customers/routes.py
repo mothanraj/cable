@@ -1,25 +1,28 @@
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 
-from app.middleware.auth import CurrentUser
+from app.middleware.auth import CurrentUser, require_roles
 from app.modules.customers import service as customer_service
+from app.modules.packages import service as package_service
+from app.modules.places import service as place_service
 from app.utils.errors import AppError
 from app.utils.responses import success_response
 from app.utils.serialize import serialize_row, serialize_rows
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
+AdminUser = Annotated[dict, Depends(require_roles("ADMIN"))]
+
 
 class CreateCustomerRequest(BaseModel):
     customerName: str = Field(min_length=1)
     stbNumber: str = Field(min_length=1)
     phone: str | None = None
-    place: str | None = None
-    packageId: str
-    customMonthlyAmount: float | None = None
+    placeId: str = Field(min_length=1)
+    packageId: str | None = None
     assignedUserId: str | None = None
     remarks: str | None = None
 
@@ -28,9 +31,8 @@ class UpdateCustomerRequest(BaseModel):
     customerName: str = Field(min_length=1)
     stbNumber: str = Field(min_length=1)
     phone: str | None = None
-    place: str | None = None
-    packageId: str
-    customMonthlyAmount: float | None = None
+    placeId: str = Field(min_length=1)
+    packageId: str | None = None
     remarks: str | None = None
 
 
@@ -79,12 +81,8 @@ def get_customer_by_id(user: CurrentUser, customer_id: str):
 
 
 @router.post("")
-def create_customer(user: CurrentUser, body: CreateCustomerRequest):
-    assigned_user_id = (
-        body.assignedUserId
-        if user["role"] == "ADMIN"
-        else user["id"]
-    )
+def create_customer(_admin: AdminUser, body: CreateCustomerRequest):
+    assigned_user_id = body.assignedUserId
 
     if not assigned_user_id:
         raise AppError(
@@ -93,13 +91,26 @@ def create_customer(user: CurrentUser, body: CreateCustomerRequest):
             status_code=400,
         )
 
-    if (
-        body.customMonthlyAmount is not None
-        and body.customMonthlyAmount < 0
-    ):
+    place = place_service.get_place_by_id(body.placeId)
+    if place is None:
         raise AppError(
-            code="INVALID_REQUEST",
-            message="Custom monthly amount cannot be negative.",
+            code="PLACE_NOT_FOUND",
+            message="Place not found or is inactive.",
+            status_code=400,
+        )
+
+    if not body.packageId:
+        raise AppError(
+            code="PACKAGE_REQUIRED",
+            message="Package is required.",
+            status_code=400,
+        )
+
+    package = package_service.get_package_by_id(body.packageId)
+    if package is None:
+        raise AppError(
+            code="PACKAGE_NOT_FOUND",
+            message="Package not found or is inactive.",
             status_code=400,
         )
 
@@ -109,9 +120,9 @@ def create_customer(user: CurrentUser, body: CreateCustomerRequest):
                 "customer_name": body.customerName.strip(),
                 "stb_number": body.stbNumber.strip(),
                 "phone": _optional_text(body.phone),
-                "place": _optional_text(body.place),
-                "package_id": body.packageId,
-                "custom_monthly_amount": body.customMonthlyAmount,
+                "place_id": place["id"],
+                "place": place["place_name"],
+                "package_id": package["id"],
                 "assigned_user_id": assigned_user_id,
                 "remarks": _optional_text(body.remarks),
             }
@@ -125,7 +136,7 @@ def create_customer(user: CurrentUser, body: CreateCustomerRequest):
     except ForeignKeyViolation as exc:
         raise AppError(
             code="INVALID_REFERENCE",
-            message="Package or assigned user does not exist.",
+            message="Package, place, or assigned user does not exist.",
             status_code=400,
         ) from exc
 
@@ -141,15 +152,52 @@ def update_customer(
     customer_id: str,
     body: UpdateCustomerRequest,
 ):
-    if (
-        body.customMonthlyAmount is not None
-        and body.customMonthlyAmount < 0
-    ):
+    place = place_service.get_place_by_id(
+        body.placeId,
+        active_only=False,
+    )
+    if place is None:
         raise AppError(
-            code="INVALID_REQUEST",
-            message="Custom monthly amount cannot be negative.",
+            code="PLACE_NOT_FOUND",
+            message="Place not found.",
             status_code=400,
         )
+
+    if user["role"] == "ADMIN":
+        if not body.packageId:
+            raise AppError(
+                code="PACKAGE_REQUIRED",
+                message="Package is required.",
+                status_code=400,
+            )
+
+        package = package_service.get_package_by_id(
+            body.packageId,
+            active_only=False,
+        )
+        if package is None:
+            raise AppError(
+                code="PACKAGE_NOT_FOUND",
+                message="Package not found.",
+                status_code=400,
+            )
+        package_id = package["id"]
+    else:
+        existing_customer = customer_service.get_customer_by_id(
+            customer_id=customer_id,
+            user_id=user["id"],
+            role=user["role"],
+        )
+        if existing_customer is None:
+            raise AppError(
+                code="CUSTOMER_NOT_FOUND",
+                message=(
+                    "Customer not found or you do not have permission "
+                    "to edit it."
+                ),
+                status_code=404,
+            )
+        package_id = existing_customer["package_id"]
 
     try:
         customer = customer_service.update_customer(
@@ -160,9 +208,9 @@ def update_customer(
                 "customer_name": body.customerName.strip(),
                 "stb_number": body.stbNumber.strip(),
                 "phone": _optional_text(body.phone),
-                "place": _optional_text(body.place),
-                "package_id": body.packageId,
-                "custom_monthly_amount": body.customMonthlyAmount,
+                "place_id": place["id"],
+                "place": place["place_name"],
+                "package_id": package_id,
                 "remarks": _optional_text(body.remarks),
             },
         )

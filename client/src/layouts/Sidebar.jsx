@@ -1,8 +1,9 @@
 import {
-  BarChart3,
   CreditCard,
   FileText,
   LayoutDashboard,
+  MapPin,
+  Package,
   Users,
   X,
 } from "lucide-react";
@@ -46,6 +47,16 @@ export default function Sidebar({
       to: "/users",
       label: "Users",
       icon: Users,
+    });
+    links.push({
+      to: "/places",
+      label: "Places",
+      icon: MapPin,
+    });
+    links.push({
+      to: "/packages",
+      label: "Packages",
+      icon: Package,
     });
   }
 

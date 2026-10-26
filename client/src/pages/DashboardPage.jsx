@@ -79,27 +79,28 @@ export default function DashboardPage({ title }) {
               <strong>{summary.totalCustomers}</strong>
             </div>
             <div className="stat-card">
-              <span>Active customers</span>
-              <strong>{summary.activeCustomers}</strong>
+              <span>Paid</span>
+              <strong>{summary.paidCount}</strong>
             </div>
             <div className="stat-card">
-              <span>Total billed</span>
-              <strong>{formatMoney(summary.totalBilled)}</strong>
+              <span>Unpaid</span>
+              <strong>{summary.unpaidCount}</strong>
             </div>
             <div className="stat-card">
-              <span>Collected</span>
+              <span>Partial</span>
+              <strong>{summary.partialCount}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Collected (month)</span>
               <strong>{formatMoney(summary.totalCollected)}</strong>
             </div>
             <div className="stat-card">
-              <span>Outstanding</span>
+              <span>Pending (month)</span>
               <strong>{formatMoney(summary.totalOutstanding)}</strong>
             </div>
             <div className="stat-card">
-              <span>Paid / Partial / Unpaid</span>
-              <strong>
-                {summary.paidCount}/{summary.partialCount}/
-                {summary.unpaidCount}
-              </strong>
+              <span>Billing (month)</span>
+              <strong>{formatMoney(summary.totalBilled)}</strong>
             </div>
           </div>
 
