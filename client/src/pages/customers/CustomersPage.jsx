@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -13,7 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, IndianRupee, Pencil, Plus, ReceiptText, Search, Users } from "lucide-react";
 import { generateBilling, getBilling } from "../../api/billing";
 import {
   createCustomer,
@@ -32,6 +32,7 @@ import {
   normalizeDate,
   statusClass,
 } from "../../utils/format";
+import { getInitials } from "../../utils/names";
 
 const FILTERS = {
   ALL: "all",
@@ -71,7 +72,11 @@ function SortableCustomerCard({
     <article
       ref={setNodeRef}
       style={style}
-      className={`customer-card ${isDragging ? "dragging" : ""}`}
+      className={`customer-card ${isDragging ? "dragging" : ""} ${
+        bill
+          ? `customer-card--${bill.payment_status.toLowerCase()}`
+          : "customer-card--none"
+      }`}
     >
       <button
         type="button"
@@ -82,6 +87,10 @@ function SortableCustomerCard({
       >
         <GripVertical size={18} />
       </button>
+
+      <span className="avatar avatar--customer" aria-hidden="true">
+        {getInitials(customer.customer_name)}
+      </span>
 
       <div className="customer-meta">
         <h2>
@@ -142,6 +151,7 @@ function SortableCustomerCard({
           className="btn btn-secondary"
           onClick={() => onEdit(customer)}
         >
+          <Pencil size={15} aria-hidden="true" />
           Edit
         </button>
         {bill ? (
@@ -150,6 +160,7 @@ function SortableCustomerCard({
             className="btn btn-primary"
             onClick={() => onCollect(customer, bill)}
           >
+            <IndianRupee size={15} aria-hidden="true" />
             Collect Payment
           </button>
         ) : (
@@ -158,6 +169,7 @@ function SortableCustomerCard({
             className="btn btn-primary"
             onClick={() => onGenerateBill(customer)}
           >
+            <ReceiptText size={15} aria-hidden="true" />
             Generate Bill
           </button>
         )}
@@ -192,7 +204,7 @@ export default function CustomersPage() {
     })
   );
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -223,14 +235,14 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [search]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadData();
     }, 250);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, loadData]);
 
   const billingByCustomer = useMemo(() => {
     const map = new Map();
@@ -407,7 +419,7 @@ export default function CustomersPage() {
   }
 
   return (
-    <section className="customers-page">
+    <section className="page page--customers customers-page">
       <div className="page-header">
         <div>
           <h1>Customers</h1>
@@ -424,6 +436,7 @@ export default function CustomersPage() {
                 setFormOpen(true);
               }}
             >
+              <Plus size={17} aria-hidden="true" />
               Add customer
             </button>
           </div>
@@ -432,16 +445,19 @@ export default function CustomersPage() {
 
       {success && <p className="success-toast">{success}</p>}
 
-      <div className="toolbar">
+      <div className="toolbar toolbar--glass">
         <label className="field search-field">
           <span>Search</span>
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Search name, STB, phone or place..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+          <div className="input-with-icon">
+            <Search size={17} aria-hidden="true" />
+            <input
+              type="search"
+              className="search-input"
+              placeholder="Search name, STB, phone or place..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
         </label>
 
         <label className="field place-filter">
@@ -504,7 +520,13 @@ export default function CustomersPage() {
       {error && <p className="error-message">{error}</p>}
 
       {!loading && !error && placeFilteredCustomers.length === 0 && (
-        <p className="empty-state">No customers found.</p>
+        <div className="empty-state">
+          <span className="empty-state-orb" aria-hidden="true">
+            <Users size={22} />
+          </span>
+          <strong>No customers found</strong>
+          <p>Try a different search, place, or filter.</p>
+        </div>
       )}
 
       {!loading && placeFilteredCustomers.length > 0 && (
@@ -512,8 +534,13 @@ export default function CustomersPage() {
           {groupedCustomers.map((group) => (
             <div className="place-group" key={group.id}>
               <div className="place-group-header">
-                <h2>{group.name}</h2>
-                <span>{group.customers.length} customers</span>
+                <h2>
+                  <span className="place-dot" aria-hidden="true" />
+                  {group.name}
+                </h2>
+                <span className="count-chip">
+                  {group.customers.length} customers
+                </span>
               </div>
 
               <DndContext
@@ -569,18 +596,19 @@ export default function CustomersPage() {
         </div>
       )}
 
-      <CustomerFormModal
-        open={formOpen}
-        mode={formMode}
-        initialCustomer={editingCustomer}
-        onClose={() => {
-          setFormOpen(false);
-          setEditingCustomer(null);
-        }}
-        onSubmit={
-          formMode === "create" ? handleCreate : handleUpdate
-        }
-      />
+      {formOpen && (
+        <CustomerFormModal
+          mode={formMode}
+          initialCustomer={editingCustomer}
+          onClose={() => {
+            setFormOpen(false);
+            setEditingCustomer(null);
+          }}
+          onSubmit={
+            formMode === "create" ? handleCreate : handleUpdate
+          }
+        />
+      )}
 
       <CollectPaymentModal
         open={Boolean(paymentTarget)}

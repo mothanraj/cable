@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { FileSpreadsheet, FileText } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  CircleDashed,
+  FileSpreadsheet,
+  FileText,
+  TrendingUp,
+  XCircle,
+} from "lucide-react";
 import { getBillingReport } from "../api/reports";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -18,6 +27,7 @@ const STATUS_REPORTS = [
   {
     status: "PAID",
     title: "Paid Customers",
+    icon: CheckCircle2,
     description:
       "Customers whose bill is fully settled for the selected period.",
     className: "report-card--paid",
@@ -26,6 +36,7 @@ const STATUS_REPORTS = [
   {
     status: "OVERPAID",
     title: "Overpaid Customers",
+    icon: TrendingUp,
     description:
       "Customers who paid more than the package amount for the selected period.",
     className: "report-card--overpaid",
@@ -34,6 +45,7 @@ const STATUS_REPORTS = [
   {
     status: "PARTIAL",
     title: "Partial Paid Customers",
+    icon: CircleDashed,
     description:
       "Customers who paid something but still have an outstanding balance.",
     className: "report-card--partial",
@@ -42,6 +54,7 @@ const STATUS_REPORTS = [
   {
     status: "UNPAID",
     title: "Unpaid Customers",
+    icon: XCircle,
     description:
       "Customers with no payment recorded in the selected period.",
     className: "report-card--unpaid",
@@ -180,13 +193,25 @@ function ReportTable({
   );
 }
 
-function ReportCard({ report, records, onOpen }) {
+function ReportCard({ report, records, onOpen, delay = 0 }) {
   const stats = summarize(records);
+  const Icon = report.icon;
 
   return (
-    <article className={`report-card ${report.className}`}>
+    <article
+      className={`report-card ${report.className}`}
+      style={{ "--delay": `${delay}ms` }}
+    >
       <div className="report-card-header">
-        <h2>{report.title}</h2>
+        <div className="report-card-heading">
+          <span
+            className="report-card-icon"
+            aria-hidden="true"
+          >
+            {Icon && <Icon size={19} strokeWidth={2} />}
+          </span>
+          <h2>{report.title}</h2>
+        </div>
         <span>{stats.count}</span>
       </div>
 
@@ -223,7 +248,8 @@ function ReportCard({ report, records, onOpen }) {
           className="report-card-link"
           onClick={onOpen}
         >
-          Open report →
+          Open report
+          <ArrowRight size={15} aria-hidden="true" />
         </button>
       </div>
     </article>
@@ -470,7 +496,7 @@ export default function ReportsPage() {
 
   if (!isAdmin) {
     return (
-      <section>
+      <section className="page page--reports">
         <div className="page-header">
           <div>
             <h1>Billing Report</h1>
@@ -575,7 +601,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <section>
+    <section className="page page--reports">
       <div className="page-header">
         <div>
           {selectedStatus && (
@@ -587,7 +613,8 @@ export default function ReportsPage() {
                 setSelectedStatus(null);
               }}
             >
-              ← Back to reports
+              <ArrowLeft size={15} aria-hidden="true" />
+              Back to reports
             </button>
           )}
           <h1>
@@ -746,11 +773,12 @@ export default function ReportsPage() {
 
       {!loading && !error && report && !selectedStatus && (
         <div className="report-grid">
-          {STATUS_REPORTS.map((item) => (
+          {STATUS_REPORTS.map((item, index) => (
             <ReportCard
               key={item.status}
               report={item}
               records={groupedRecords[item.status]}
+              delay={index * 70}
               onOpen={() => {
                 setDownloadError("");
                 setSelectedStatus(item.status);

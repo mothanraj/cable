@@ -31,3 +31,11 @@ export async function deactivateUser(userId) {
   );
   return response.data.data.user;
 }
+
+export async function resetUserPassword(userId, password) {
+  const response = await apiClient.patch(
+    `/users/${userId}/password`,
+    { password }
+  );
+  return response.data.data.user;
+}

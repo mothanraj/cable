@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
 import {
+  KeyRound,
+  UserCheck,
+  UserPlus,
+  UserX,
+} from "lucide-react";
+import {
   activateUser,
   createUser,
   deactivateUser,
   getUsers,
+  resetUserPassword,
 } from "../api/users";
+import Modal from "../components/Modal";
 import { normalizeDate } from "../utils/format";
+import { getInitials } from "../utils/names";
 
 const emptyForm = {
   username: "",
@@ -20,6 +29,13 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetForm, setResetForm] = useState({
+    password: "",
+    confirm: "",
+  });
+  const [resetError, setResetError] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   async function loadUsers() {
     try {
@@ -38,7 +54,28 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    loadUsers();
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const rows = await getUsers();
+        if (!cancelled) setUsers(rows);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err.response?.data?.error?.message ||
+              "Unable to load users."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleCreate(event) {
@@ -86,8 +123,58 @@ export default function UsersPage() {
     }
   }
 
+  function openReset(user) {
+    setResetTarget(user);
+    setResetForm({ password: "", confirm: "" });
+    setResetError("");
+  }
+
+  function closeReset() {
+    if (resetting) return;
+
+    setResetTarget(null);
+    setResetForm({ password: "", confirm: "" });
+    setResetError("");
+  }
+
+  async function handleReset(event) {
+    event.preventDefault();
+    setResetError("");
+
+    if (resetForm.password.length < 12) {
+      setResetError("Password must be at least 12 characters.");
+      return;
+    }
+
+    if (resetForm.password !== resetForm.confirm) {
+      setResetError("Passwords do not match.");
+      return;
+    }
+
+    setResetting(true);
+
+    try {
+      await resetUserPassword(
+        resetTarget.id,
+        resetForm.password
+      );
+      setSuccess(
+        `Password reset for ${resetTarget.username}. They were signed out of all sessions.`
+      );
+      setResetTarget(null);
+      setResetForm({ password: "", confirm: "" });
+    } catch (err) {
+      setResetError(
+        err.response?.data?.error?.message ||
+          "Unable to reset password."
+      );
+    } finally {
+      setResetting(false);
+    }
+  }
+
   return (
-    <section>
+    <section className="page page--users">
       <div className="page-header">
         <div>
           <h1>Users</h1>
@@ -157,6 +244,7 @@ export default function UsersPage() {
             className="btn btn-primary"
             disabled={saving}
           >
+            <UserPlus size={16} aria-hidden="true" />
             {saving ? "Creating..." : "Create USER"}
           </button>
         </form>
@@ -190,26 +278,88 @@ export default function UsersPage() {
                 )}
                 {users.map((user) => (
                   <tr key={user.id}>
-                    <td>{user.username}</td>
+                    <td>
+                      <div className="user-cell">
+                        <span
+                          className={`avatar avatar--sm ${
+                            user.role === "ADMIN"
+                              ? "avatar--admin"
+                              : "avatar--user"
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {getInitials(
+                            user.full_name || user.username
+                          )}
+                        </span>
+                        <strong>{user.username}</strong>
+                      </div>
+                    </td>
                     <td>{user.full_name}</td>
-                    <td>{user.role}</td>
-                    <td>{user.is_active ? "Active" : "Inactive"}</td>
+                    <td>
+                      <span
+                        className={`role-chip ${
+                          user.role === "ADMIN"
+                            ? "role-chip--admin"
+                            : ""
+                        }`}
+                      >
+                        {user.role}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          user.is_active
+                            ? "status-pill status-paid"
+                            : "status-pill status-unpaid"
+                        }
+                      >
+                        {user.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
+                    </td>
                     <td>{normalizeDate(user.created_at)}</td>
                     <td>
                       {user.role === "USER" && (
-                        <button
-                          type="button"
-                          className={
-                            user.is_active
-                              ? "btn btn-danger btn-sm"
-                              : "btn btn-secondary btn-sm"
-                          }
-                          onClick={() => toggleActive(user)}
-                        >
-                          {user.is_active
-                            ? "Deactivate"
-                            : "Activate"}
-                        </button>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className={
+                              user.is_active
+                                ? "btn btn-danger btn-sm"
+                                : "btn btn-secondary btn-sm"
+                            }
+                            onClick={() => toggleActive(user)}
+                          >
+                            {user.is_active ? (
+                              <UserX
+                                size={14}
+                                aria-hidden="true"
+                              />
+                            ) : (
+                              <UserCheck
+                                size={14}
+                                aria-hidden="true"
+                              />
+                            )}
+                            {user.is_active
+                              ? "Deactivate"
+                              : "Activate"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openReset(user)}
+                          >
+                            <KeyRound
+                              size={14}
+                              aria-hidden="true"
+                            />
+                            Reset password
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -219,6 +369,85 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {resetTarget && (
+        <Modal
+          title={`Reset password for ${resetTarget.username}`}
+          onClose={closeReset}
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeReset}
+                disabled={resetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="reset-password-form"
+                className="btn btn-primary"
+                disabled={resetting}
+              >
+                {resetting ? "Resetting..." : "Reset password"}
+              </button>
+            </>
+          }
+        >
+          <form
+            id="reset-password-form"
+            className="form-grid"
+            onSubmit={handleReset}
+          >
+            {resetError && (
+              <p className="form-error">{resetError}</p>
+            )}
+
+            <p className="muted">
+              Set a new password for {resetTarget.full_name} (
+              {resetTarget.username}). Their active sessions will
+              be signed out.
+            </p>
+
+            <label className="field">
+              <span>New password (min 12 characters)</span>
+              <input
+                type="password"
+                className="input"
+                value={resetForm.password}
+                onChange={(event) =>
+                  setResetForm((prev) => ({
+                    ...prev,
+                    password: event.target.value,
+                  }))
+                }
+                minLength={12}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span>Confirm new password</span>
+              <input
+                type="password"
+                className="input"
+                value={resetForm.confirm}
+                onChange={(event) =>
+                  setResetForm((prev) => ({
+                    ...prev,
+                    confirm: event.target.value,
+                  }))
+                }
+                minLength={12}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }

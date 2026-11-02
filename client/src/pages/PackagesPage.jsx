@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  Package as PackageIcon,
+  Pencil,
+  Plus,
+  Power,
+  Star,
+} from "lucide-react";
+import {
   activatePackage,
   createPackage,
   deactivatePackage,
@@ -179,7 +186,7 @@ export default function PackagesPage() {
   );
 
   return (
-    <section>
+    <section className="page page--packages">
       <div className="page-header">
         <div>
           <h1>Packages</h1>
@@ -192,20 +199,23 @@ export default function PackagesPage() {
 
       <div className="panel" style={{ marginBottom: 18 }}>
         <div className="panel-body">
-          <p style={{ margin: 0 }}>
-            <strong>
-              Default package for user-created customers:
-            </strong>{" "}
-            {defaultPackage ? (
-              `${defaultPackage.package_name} (${formatMoney(
-                defaultPackage.monthly_amount
-              )})`
-            ) : (
-              <span className="muted">
-                Not set — users cannot create customers until an
-                administrator selects one.
-              </span>
-            )}
+          <p className="admin-panel-note">
+            <PackageIcon size={18} aria-hidden="true" />
+            <span>
+              <strong>
+                Default package for user-created customers:
+              </strong>{" "}
+              {defaultPackage ? (
+                `${defaultPackage.package_name} (${formatMoney(
+                  defaultPackage.monthly_amount
+                )})`
+              ) : (
+                <span className="muted">
+                  Not set — users cannot create customers until an
+                  administrator selects one.
+                </span>
+              )}
+            </span>
           </p>
         </div>
       </div>
@@ -256,6 +266,7 @@ export default function PackagesPage() {
             className="btn btn-primary"
             disabled={saving}
           >
+            <Plus size={16} aria-hidden="true" />
             {saving ? "Creating..." : "Create package"}
           </button>
         </form>
@@ -351,12 +362,30 @@ export default function PackagesPage() {
                       <td>{packageRow.package_name}</td>
                       <td className="col-num">{formatMoney(packageRow.monthly_amount)}</td>
                       <td>
-                        {packageRow.is_active
-                          ? "Active"
-                          : "Inactive"}
+                        <span
+                          className={
+                            packageRow.is_active
+                              ? "status-pill status-paid"
+                              : "status-pill status-unpaid"
+                          }
+                        >
+                          {packageRow.is_active
+                            ? "Active"
+                            : "Inactive"}
+                        </span>
                       </td>
                       <td>
-                        {packageRow.is_default ? "Default" : "-"}
+                        {packageRow.is_default ? (
+                          <span className="default-chip">
+                            <Star
+                              size={11}
+                              aria-hidden="true"
+                            />
+                            Default
+                          </span>
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td>{normalizeDate(packageRow.created_at)}</td>
                       <td>
@@ -366,6 +395,10 @@ export default function PackagesPage() {
                             className="btn btn-secondary btn-sm"
                             onClick={() => startEdit(packageRow)}
                           >
+                            <Pencil
+                              size={14}
+                              aria-hidden="true"
+                            />
                             Edit
                           </button>
                           {packageRow.is_active &&
@@ -377,6 +410,10 @@ export default function PackagesPage() {
                                   handleSetDefault(packageRow)
                                 }
                               >
+                                <Star
+                                  size={14}
+                                  aria-hidden="true"
+                                />
                                 Set default
                               </button>
                             )}
@@ -397,6 +434,10 @@ export default function PackagesPage() {
                                 toggleActive(packageRow)
                               }
                             >
+                              <Power
+                                size={14}
+                                aria-hidden="true"
+                              />
                               {packageRow.is_active
                                 ? "Deactivate"
                                 : "Activate"}

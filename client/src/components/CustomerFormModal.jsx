@@ -16,7 +16,6 @@ const emptyForm = {
 };
 
 export default function CustomerFormModal({
-  open,
   mode,
   initialCustomer,
   onClose,
@@ -24,7 +23,19 @@ export default function CustomerFormModal({
 }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(() =>
+    initialCustomer
+      ? {
+          customerName: initialCustomer.customer_name || "",
+          stbNumber: initialCustomer.stb_number || "",
+          phone: initialCustomer.phone || "",
+          placeId: initialCustomer.place_id || "",
+          packageId: initialCustomer.package_id || "",
+          assignedUserId: initialCustomer.assigned_user_id || "",
+          remarks: initialCustomer.remarks || "",
+        }
+      : emptyForm
+  );
   const [packages, setPackages] = useState([]);
   const [places, setPlaces] = useState([]);
   const [users, setUsers] = useState([]);
@@ -32,53 +43,43 @@ export default function CustomerFormModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-
-    setError("");
-    setForm(
-      initialCustomer
-        ? {
-            customerName: initialCustomer.customer_name || "",
-            stbNumber: initialCustomer.stb_number || "",
-            phone: initialCustomer.phone || "",
-            placeId: initialCustomer.place_id || "",
-            packageId: initialCustomer.package_id || "",
-            assignedUserId:
-              initialCustomer.assigned_user_id || "",
-            remarks: initialCustomer.remarks || "",
-          }
-        : emptyForm
-    );
+    let cancelled = false;
 
     async function loadRefs() {
       try {
         const placeRows = await getPlaces();
-        setPlaces(placeRows);
+        if (!cancelled) setPlaces(placeRows);
 
         if (isAdmin) {
           const [packageRows, userRows] = await Promise.all([
             getPackages(),
             getUsers(),
           ]);
-          setPackages(packageRows);
-          setUsers(
-            userRows.filter(
-              (row) => row.role === "USER" && row.is_active
-            )
-          );
+          if (!cancelled) {
+            setPackages(packageRows);
+            setUsers(
+              userRows.filter(
+                (row) =>
+                  row.role === "USER" && row.is_active
+              )
+            );
+          }
         }
       } catch (err) {
-        setError(
-          err.response?.data?.error?.message ||
-            "Unable to load form data."
-        );
+        if (!cancelled) {
+          setError(
+            err.response?.data?.error?.message ||
+              "Unable to load form data."
+          );
+        }
       }
     }
 
     loadRefs();
-  }, [open, initialCustomer, isAdmin]);
-
-  if (!open) return null;
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
 
   const placeOptions = [...places];
   if (

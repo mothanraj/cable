@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  Check,
+  MapPin,
+  Pencil,
+  Plus,
+  Power,
+} from "lucide-react";
+import {
   activatePlace,
   createPlace,
   deactivatePlace,
@@ -146,7 +153,7 @@ export default function PlacesPage() {
   }
 
   return (
-    <section>
+    <section className="page page--places">
       <div className="page-header">
         <div>
           <h1>Places</h1>
@@ -182,6 +189,7 @@ export default function PlacesPage() {
             className="btn btn-primary"
             disabled={saving}
           >
+            <Plus size={16} aria-hidden="true" />
             {saving ? "Creating..." : "Create place"}
           </button>
         </form>
@@ -233,6 +241,10 @@ export default function PlacesPage() {
                             className="btn btn-primary btn-sm"
                             disabled={saving}
                           >
+                            <Check
+                              size={14}
+                              aria-hidden="true"
+                            />
                             Save
                           </button>
                           <button
@@ -244,11 +256,29 @@ export default function PlacesPage() {
                           </button>
                         </form>
                       ) : (
-                        place.place_name
+                        <span className="table-identity">
+                          <span
+                            className="avatar avatar--sm avatar--place"
+                            aria-hidden="true"
+                          >
+                            <MapPin size={15} />
+                          </span>
+                          <strong>{place.place_name}</strong>
+                        </span>
                       )}
                     </td>
                     <td>
-                      {place.is_active ? "Active" : "Inactive"}
+                      <span
+                        className={
+                          place.is_active
+                            ? "status-pill status-paid"
+                            : "status-pill status-unpaid"
+                        }
+                      >
+                        {place.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
                     </td>
                     <td>{normalizeDate(place.created_at)}</td>
                     <td>
@@ -259,6 +289,10 @@ export default function PlacesPage() {
                             className="btn btn-secondary btn-sm"
                             onClick={() => startEdit(place)}
                           >
+                            <Pencil
+                              size={14}
+                              aria-hidden="true"
+                            />
                             Edit
                           </button>
                         )}
@@ -271,6 +305,10 @@ export default function PlacesPage() {
                           }
                           onClick={() => toggleActive(place)}
                         >
+                          <Power
+                            size={14}
+                            aria-hidden="true"
+                          />
                           {place.is_active
                             ? "Deactivate"
                             : "Activate"}

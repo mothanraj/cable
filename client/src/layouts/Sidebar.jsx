@@ -4,79 +4,98 @@ import {
   LayoutDashboard,
   MapPin,
   Package,
+  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import BrandMark from "../components/BrandMark";
 import { useAuth } from "../context/AuthContext";
+import { getInitials } from "../utils/names";
 
-export default function Sidebar({
-  open,
-  onClose,
-}) {
+export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
 
   const isAdmin = user?.role === "ADMIN";
 
-  const links = [
+  const groups = [
     {
-      to: isAdmin ? "/admin" : "/dashboard",
-      label: "Dashboard",
-      icon: LayoutDashboard,
-      end: true,
+      label: "Overview",
+      links: [
+        {
+          to: isAdmin ? "/admin" : "/dashboard",
+          label: "Dashboard",
+          icon: LayoutDashboard,
+          tone: "indigo",
+          end: true,
+        },
+      ],
     },
     {
-      to: "/customers",
-      label: "Customers",
-      icon: Users,
-    },
-    {
-      to: "/payments",
-      label: "Payments",
-      icon: CreditCard,
-    },
-    {
-      to: "/reports",
-      label: "Reports",
-      icon: FileText,
+      label: "Operations",
+      links: [
+        {
+          to: "/customers",
+          label: "Customers",
+          icon: Users,
+          tone: "cyan",
+        },
+        {
+          to: "/payments",
+          label: "Payments",
+          icon: CreditCard,
+          tone: "emerald",
+        },
+        {
+          to: "/reports",
+          label: "Reports",
+          icon: FileText,
+          tone: "amber",
+        },
+      ],
     },
   ];
 
   if (isAdmin) {
-    links.push({
-      to: "/users",
-      label: "Users",
-      icon: Users,
-    });
-    links.push({
-      to: "/places",
-      label: "Places",
-      icon: MapPin,
-    });
-    links.push({
-      to: "/packages",
-      label: "Packages",
-      icon: Package,
+    groups.push({
+      label: "Administration",
+      links: [
+        {
+          to: "/users",
+          label: "Users",
+          icon: ShieldCheck,
+          tone: "pink",
+        },
+        {
+          to: "/places",
+          label: "Places",
+          icon: MapPin,
+          tone: "violet",
+        },
+        {
+          to: "/packages",
+          label: "Packages",
+          icon: Package,
+          tone: "blue",
+        },
+      ],
     });
   }
 
   return (
     <>
-      <div
-        className={`sidebar-overlay ${
-          open ? "show" : ""
-        }`}
-        onClick={onClose}
-      />
-
       <aside
-        className={`sidebar ${
-          open ? "open" : ""
-        }`}
+        className={`sidebar ${open ? "open" : ""}`}
+        aria-label="Main navigation"
       >
-        <div className="sidebar-header">
-          <strong>Cable Management</strong>
-
+        <div className="sidebar-brand">
+          <BrandMark />
+          <span className="sidebar-brand-copy">
+            <span className="sidebar-brand-name">Cable</span>
+            <span className="sidebar-brand-sub">
+              Management
+            </span>
+          </span>
           <button
             type="button"
             className="sidebar-close"
@@ -88,31 +107,64 @@ export default function Sidebar({
         </div>
 
         <nav className="sidebar-nav">
-          {links.map(
-            ({
-              to,
-              label,
-              icon: Icon,
-              end,
-            }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `nav-link ${
-                    isActive ? "active" : ""
-                  }`
-                }
-              >
-                <Icon size={19} />
-                <span>{label}</span>
-              </NavLink>
-            )
-          )}
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className="nav-section">{group.label}</p>
+
+              {group.links.map((link) => {
+                const Icon = link.icon;
+
+                return (
+                  <NavLink
+                    key={link.to}
+                    to={link.to}
+                    end={link.end}
+                    onClick={onClose}
+                    className={({ isActive }) =>
+                      `nav-link tone-${link.tone} ${
+                        isActive ? "active" : ""
+                      }`
+                    }
+                  >
+                    <span
+                      className="nav-icon"
+                      aria-hidden="true"
+                    >
+                      <Icon
+                        size={18}
+                        strokeWidth={2}
+                      />
+                    </span>
+                    <span className="nav-link-label">
+                      {link.label}
+                    </span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
         </nav>
+
+        <div className="sidebar-foot">
+          <div className="sidebar-user">
+            <span className="avatar avatar--sm">
+              {getInitials(user?.fullName || user?.username)}
+            </span>
+            <span className="sidebar-user-copy">
+              <strong>{user?.fullName || user?.username}</strong>
+              <span>
+                {isAdmin ? "Administrator" : "Collector"}
+              </span>
+            </span>
+          </div>
+        </div>
       </aside>
+
+      <div
+        className={`sidebar-overlay ${open ? "show" : ""}`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
     </>
   );
 }

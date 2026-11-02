@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { X } from "lucide-react";
 
 export default function Modal({
@@ -6,6 +7,22 @@ export default function Modal({
   children,
   footer,
 }) {
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.body.classList.add("modal-open");
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.classList.remove("modal-open");
+    };
+  }, [onClose]);
+
   return (
     <div
       className="modal-backdrop"

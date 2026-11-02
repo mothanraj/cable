@@ -63,6 +63,50 @@ def get_users() -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
+def reset_user_password(
+    user_id: str,
+    password: str,
+) -> dict[str, Any] | None:
+    password_hash = hash_password(password)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users
+                SET
+                  password_hash = %s,
+                  updated_at = NOW()
+                WHERE id = %s
+                  AND role = 'USER'
+                RETURNING
+                  id,
+                  username,
+                  full_name,
+                  role,
+                  is_active
+                """,
+                (password_hash, user_id),
+            )
+            user = cur.fetchone()
+
+            if user is None:
+                conn.rollback()
+                return None
+
+            cur.execute(
+                """
+                UPDATE user_sessions
+                SET revoked_at = NOW()
+                WHERE user_id = %s
+                  AND revoked_at IS NULL
+                """,
+                (user_id,),
+            )
+            conn.commit()
+            return user
+
+
 def set_user_status(user_id: str, is_active: bool) -> dict[str, Any] | None:
     with get_connection() as conn:
         with conn.cursor() as cur:

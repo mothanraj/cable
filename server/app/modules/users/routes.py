@@ -21,6 +21,10 @@ class CreateUserRequest(BaseModel):
     password: str = Field(min_length=12)
 
 
+class ResetPasswordRequest(BaseModel):
+    password: str = Field(min_length=12, max_length=128)
+
+
 @router.get("")
 def get_users(_admin: AdminUser):
     users = user_service.get_users()
@@ -70,3 +74,25 @@ def deactivate_user(_admin: AdminUser, user_id: str):
             status_code=404,
         )
     return success_response({"user": serialize_row(user)})
+
+
+@router.patch("/{user_id}/password")
+def reset_user_password(
+    _admin: AdminUser,
+    user_id: str,
+    body: ResetPasswordRequest,
+):
+    user = user_service.reset_user_password(user_id, body.password)
+    if user is None:
+        raise AppError(
+            code="USER_NOT_FOUND",
+            message="User not found.",
+            status_code=404,
+        )
+
+    return success_response(
+        {"user": serialize_row(user)},
+        message=(
+            "Password reset. The user was signed out of all sessions."
+        ),
+    )
