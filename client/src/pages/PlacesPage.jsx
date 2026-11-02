@@ -162,7 +162,7 @@ export default function PlacesPage() {
           <h2>Create place</h2>
         </div>
         <form
-          className="modal-body"
+          className="panel-body"
           onSubmit={handleCreate}
         >
           <label className="field">
@@ -194,7 +194,7 @@ export default function PlacesPage() {
           </p>
         ) : (
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table data-table--compact">
               <thead>
                 <tr>
                   <th>Place</th>
@@ -230,14 +230,14 @@ export default function PlacesPage() {
                           />
                           <button
                             type="submit"
-                            className="btn btn-primary"
+                            className="btn btn-primary btn-sm"
                             disabled={saving}
                           >
                             Save
                           </button>
                           <button
                             type="button"
-                            className="btn btn-secondary"
+                            className="btn btn-secondary btn-sm"
                             onClick={cancelEdit}
                           >
                             Cancel
@@ -256,7 +256,7 @@ export default function PlacesPage() {
                         {editingId !== place.id && (
                           <button
                             type="button"
-                            className="btn btn-secondary"
+                            className="btn btn-secondary btn-sm"
                             onClick={() => startEdit(place)}
                           >
                             Edit
@@ -266,8 +266,8 @@ export default function PlacesPage() {
                           type="button"
                           className={
                             place.is_active
-                              ? "btn btn-danger"
-                              : "btn btn-secondary"
+                              ? "btn btn-danger btn-sm"
+                              : "btn btn-secondary btn-sm"
                           }
                           onClick={() => toggleActive(place)}
                         >

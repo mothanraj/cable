@@ -36,6 +36,7 @@ import {
 const FILTERS = {
   ALL: "all",
   PAID: "paid",
+  OVERPAID: "overpaid",
   UNPAID: "unpaid",
   PARTIAL: "partial",
   TODAY: "today",
@@ -47,6 +48,7 @@ function SortableCustomerCard({
   customer,
   bill,
   latestPayment,
+  serial,
   onEdit,
   onCollect,
   onGenerateBill,
@@ -82,7 +84,12 @@ function SortableCustomerCard({
       </button>
 
       <div className="customer-meta">
-        <h2>{customer.customer_name}</h2>
+        <h2>
+          <span className="customer-serial">
+            S.No {serial}
+          </span>
+          {customer.customer_name}
+        </h2>
         <p>STB: {customer.stb_number}</p>
         <p>Phone: {customer.phone || "-"}</p>
         <p>Place: {customer.place || "-"}</p>
@@ -97,51 +104,63 @@ function SortableCustomerCard({
       <div className="customer-billing">
         {bill ? (
           <>
-            <p>Monthly: {formatMoney(bill.monthly_amount)}</p>
-            <p>Paid: {formatMoney(bill.total_paid)}</p>
-            <p>Balance: {formatMoney(bill.balance_amount)}</p>
-            <p>
+            <div className="billing-line">
+              <span>Monthly</span>
+              <strong>{formatMoney(bill.monthly_amount)}</strong>
+            </div>
+            <div className="billing-line">
+              <span>Paid</span>
+              <strong>{formatMoney(bill.total_paid)}</strong>
+            </div>
+            <div className="billing-line">
+              <span>Balance</span>
+              <strong>{formatMoney(bill.balance_amount)}</strong>
+            </div>
+            <div className="billing-line">
+              <span>Status</span>
               <span className={statusClass(bill.payment_status)}>
                 {bill.payment_status}
               </span>
-            </p>
-            <p>
-              Latest payment:{" "}
-              {latestPayment
-                ? normalizeDate(latestPayment.payment_date)
-                : "-"}
-            </p>
+            </div>
+            <div className="billing-line">
+              <span>Latest payment</span>
+              <strong>
+                {latestPayment
+                  ? normalizeDate(latestPayment.payment_date)
+                  : "-"}
+              </strong>
+            </div>
           </>
         ) : (
           <p className="muted">No billing for this month.</p>
         )}
+      </div>
 
-        <div className="customer-actions">
+      <div className="customer-actions">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => onEdit(customer)}
+        >
+          Edit
+        </button>
+        {bill ? (
           <button
             type="button"
-            className="btn btn-secondary"
-            onClick={() => onEdit(customer)}
+            className="btn btn-primary"
+            onClick={() => onCollect(customer, bill)}
           >
-            Edit
+            Collect Payment
           </button>
-          {bill ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onCollect(customer, bill)}
-            >
-              Collect Payment
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onGenerateBill(customer)}
-            >
-              Generate Bill
-            </button>
-          )}
-        </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => onGenerateBill(customer)}
+          >
+            Generate Bill
+          </button>
+        )}
       </div>
     </article>
   );
@@ -253,6 +272,8 @@ export default function CustomersPage() {
       switch (activeFilter) {
         case FILTERS.PAID:
           return bill.payment_status === "PAID";
+        case FILTERS.OVERPAID:
+          return bill.payment_status === "OVERPAID";
         case FILTERS.UNPAID:
           return bill.payment_status === "UNPAID";
         case FILTERS.PARTIAL:
@@ -412,13 +433,16 @@ export default function CustomersPage() {
       {success && <p className="success-toast">{success}</p>}
 
       <div className="toolbar">
-        <input
-          type="search"
-          className="search-input"
-          placeholder="Search name, STB, phone or place..."
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+        <label className="field search-field">
+          <span>Search</span>
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Search name, STB, phone or place..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
 
         <label className="field place-filter">
           <span>Place</span>
@@ -442,6 +466,7 @@ export default function CustomersPage() {
           {[
             [FILTERS.ALL, "All"],
             [FILTERS.PAID, "Paid"],
+            [FILTERS.OVERPAID, "Overpaid"],
             [FILTERS.PARTIAL, "Partial"],
             [FILTERS.UNPAID, "Unpaid"],
             [FILTERS.TODAY, "Today's Payments"],
@@ -505,7 +530,7 @@ export default function CustomersPage() {
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="customer-list">
-                    {group.customers.map((customer) => {
+                    {group.customers.map((customer, index) => {
                       const bill = billingByCustomer.get(
                         customer.id
                       );
@@ -517,6 +542,7 @@ export default function CustomersPage() {
                           key={customer.id}
                           customer={customer}
                           bill={bill}
+                          serial={index + 1}
                           latestPayment={
                             paymentInfo?.latestPayment
                           }

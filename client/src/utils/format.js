@@ -9,7 +9,7 @@ export function getCurrentBillingMonth() {
 }
 
 export function normalizeDate(value) {
-  if (!value) return null;
+  if (!value) return "-";
   return String(value).slice(0, 10);
 }
 
@@ -21,7 +21,15 @@ export function formatMoney(value) {
   })}`;
 }
 
+export function getOverpaidAmount(row) {
+  return Math.max(
+    Number(row.total_paid || 0) - Number(row.monthly_amount || 0),
+    0
+  );
+}
+
 export function statusClass(status) {
+  if (status === "OVERPAID") return "status-pill status-overpaid";
   if (status === "PAID") return "status-pill status-paid";
   if (status === "PARTIAL") return "status-pill status-partial";
   return "status-pill status-unpaid";

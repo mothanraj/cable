@@ -55,11 +55,12 @@ export default function PaymentsPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>S.No</th>
                   <th>Date</th>
                   <th>Customer</th>
                   <th>STB</th>
                   <th>Billing month</th>
-                  <th>Amount</th>
+                  <th className="col-num">Amount</th>
                   <th>Collected by</th>
                   <th>Remarks</th>
                 </tr>
@@ -67,18 +68,23 @@ export default function PaymentsPage() {
               <tbody>
                 {payments.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="empty-state">
+                    <td colSpan={8} className="empty-state">
                       No payments found.
                     </td>
                   </tr>
                 )}
-                {payments.map((payment) => (
+                {payments.map((payment, index) => (
                   <tr key={payment.id}>
+                    <td className="serial-cell">
+                      {index + 1}
+                    </td>
                     <td>{normalizeDate(payment.payment_date)}</td>
                     <td>{payment.customer_name}</td>
                     <td>{payment.stb_number}</td>
                     <td>{normalizeDate(payment.billing_month)}</td>
-                    <td>{formatMoney(payment.collected_amount)}</td>
+                    <td className="col-num">
+                      {formatMoney(payment.collected_amount)}
+                    </td>
                     <td>
                       {payment.created_by_name ||
                         payment.created_by_username}

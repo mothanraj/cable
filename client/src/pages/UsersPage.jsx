@@ -103,7 +103,7 @@ export default function UsersPage() {
           <h2>Create user</h2>
         </div>
         <form
-          className="modal-body"
+          className="panel-body"
           onSubmit={handleCreate}
         >
           <div className="form-grid two">
@@ -169,7 +169,7 @@ export default function UsersPage() {
           </p>
         ) : (
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table data-table--compact">
               <thead>
                 <tr>
                   <th>Username</th>
@@ -181,6 +181,13 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody>
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="empty-state">
+                      No users found.
+                    </td>
+                  </tr>
+                )}
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td>{user.username}</td>
@@ -194,8 +201,8 @@ export default function UsersPage() {
                           type="button"
                           className={
                             user.is_active
-                              ? "btn btn-danger"
-                              : "btn btn-secondary"
+                              ? "btn btn-danger btn-sm"
+                              : "btn btn-secondary btn-sm"
                           }
                           onClick={() => toggleActive(user)}
                         >

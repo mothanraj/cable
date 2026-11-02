@@ -67,7 +67,13 @@ def get_dashboard(
                       WHEN cbs.payment_status = 'UNPAID'
                       THEN 1
                     END
-                  ) AS unpaid_count
+                  ) AS unpaid_count,
+                  COUNT(
+                    CASE
+                      WHEN cbs.payment_status = 'OVERPAID'
+                      THEN 1
+                    END
+                  ) AS overpaid_count
                 FROM customer_billing_summary cbs
                 INNER JOIN customers c
                   ON c.id = cbs.customer_id
@@ -171,6 +177,7 @@ def get_dashboard(
             "paidCount": int(summary["paid_count"] or 0),
             "partialCount": int(summary["partial_count"] or 0),
             "unpaidCount": int(summary["unpaid_count"] or 0),
+            "overpaidCount": int(summary["overpaid_count"] or 0),
         },
         "billing": billing,
         "recentPayments": recent_payments,

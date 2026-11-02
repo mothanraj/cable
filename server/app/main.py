@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -25,6 +27,9 @@ from app.modules.places.routes import router as places_router
 from app.modules.reports.routes import router as reports_router
 from app.modules.users.routes import router as users_router
 from app.utils.errors import AppError
+
+# Present only in the Docker image, where the client build is copied here.
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
@@ -49,7 +54,8 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.client_url],
+        allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -150,6 +156,40 @@ def create_app() -> FastAPI:
                     },
                 },
             )
+
+    # Serve the built React client (Docker image only). API routes above are
+    # registered first, so they take precedence over this catch-all.
+    if STATIC_DIR.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=STATIC_DIR / "assets"),
+            name="assets",
+        )
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def serve_spa(full_path: str):
+            if full_path.startswith("api/"):
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "success": False,
+                        "error": {
+                            "code": "NOT_FOUND",
+                            "message": "Route not found.",
+                        },
+                    },
+                )
+
+            candidate = (STATIC_DIR / full_path).resolve()
+
+            if (
+                full_path
+                and candidate.is_file()
+                and STATIC_DIR.resolve() in candidate.parents
+            ):
+                return FileResponse(candidate)
+
+            return FileResponse(STATIC_DIR / "index.html")
 
     return app
 

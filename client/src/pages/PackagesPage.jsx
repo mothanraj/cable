@@ -191,7 +191,7 @@ export default function PackagesPage() {
       {error && <p className="error-message">{error}</p>}
 
       <div className="panel" style={{ marginBottom: 18 }}>
-        <div className="modal-body">
+        <div className="panel-body">
           <p style={{ margin: 0 }}>
             <strong>
               Default package for user-created customers:
@@ -215,7 +215,7 @@ export default function PackagesPage() {
           <h2>Create package</h2>
         </div>
         <form
-          className="modal-body"
+          className="panel-body"
           onSubmit={handleCreate}
         >
           <div className="form-grid two">
@@ -268,11 +268,11 @@ export default function PackagesPage() {
           </p>
         ) : (
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table data-table--compact">
               <thead>
                 <tr>
                   <th>Package</th>
-                  <th>Monthly amount</th>
+                  <th className="col-num">Monthly amount</th>
                   <th>Status</th>
                   <th>Default</th>
                   <th>Created</th>
@@ -287,117 +287,126 @@ export default function PackagesPage() {
                     </td>
                   </tr>
                 )}
-                {packages.map((packageRow) => (
-                  <tr key={packageRow.id}>
-                    <td>
-                      {editingId === packageRow.id ? (
+                {packages.map((packageRow) =>
+                  editingId === packageRow.id ? (
+                    <tr key={packageRow.id}>
+                      <td colSpan={6}>
                         <form
                           className="inline-edit-form"
                           onSubmit={handleUpdate}
                         >
-                          <input
-                            className="input"
-                            value={editingForm.packageName}
-                            onChange={(event) =>
-                              setEditingForm((prev) => ({
-                                ...prev,
-                                packageName: event.target.value,
-                              }))
-                            }
-                            required
-                            autoFocus
-                          />
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="input"
-                            value={editingForm.monthlyAmount}
-                            onChange={(event) =>
-                              setEditingForm((prev) => ({
-                                ...prev,
-                                monthlyAmount:
-                                  event.target.value,
-                              }))
-                            }
-                            required
-                          />
+                          <label className="field">
+                            <span>Package name</span>
+                            <input
+                              className="input"
+                              value={editingForm.packageName}
+                              onChange={(event) =>
+                                setEditingForm((prev) => ({
+                                  ...prev,
+                                  packageName:
+                                    event.target.value,
+                                }))
+                              }
+                              required
+                              autoFocus
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Monthly amount</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="input"
+                              value={editingForm.monthlyAmount}
+                              onChange={(event) =>
+                                setEditingForm((prev) => ({
+                                  ...prev,
+                                  monthlyAmount:
+                                    event.target.value,
+                                }))
+                              }
+                              required
+                            />
+                          </label>
                           <button
                             type="submit"
-                            className="btn btn-primary"
+                            className="btn btn-primary btn-sm"
                             disabled={saving}
                           >
                             Save
                           </button>
                           <button
                             type="button"
-                            className="btn btn-secondary"
+                            className="btn btn-secondary btn-sm"
                             onClick={cancelEdit}
                           >
                             Cancel
                           </button>
                         </form>
-                      ) : (
-                        packageRow.package_name
-                      )}
-                    </td>
-                    <td>
-                      {formatMoney(packageRow.monthly_amount)}
-                    </td>
-                    <td>
-                      {packageRow.is_active ? "Active" : "Inactive"}
-                    </td>
-                    <td>
-                      {packageRow.is_default ? "Default" : "-"}
-                    </td>
-                    <td>{normalizeDate(packageRow.created_at)}</td>
-                    <td>
-                      <div className="table-actions">
-                        {editingId !== packageRow.id && (
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={packageRow.id}>
+                      <td>{packageRow.package_name}</td>
+                      <td className="col-num">{formatMoney(packageRow.monthly_amount)}</td>
+                      <td>
+                        {packageRow.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </td>
+                      <td>
+                        {packageRow.is_default ? "Default" : "-"}
+                      </td>
+                      <td>{normalizeDate(packageRow.created_at)}</td>
+                      <td>
+                        <div className="table-actions">
                           <button
                             type="button"
-                            className="btn btn-secondary"
+                            className="btn btn-secondary btn-sm"
                             onClick={() => startEdit(packageRow)}
                           >
                             Edit
                           </button>
-                        )}
-                        {packageRow.is_active &&
-                          !packageRow.is_default && (
+                          {packageRow.is_active &&
+                            !packageRow.is_default && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() =>
+                                  handleSetDefault(packageRow)
+                                }
+                              >
+                                Set default
+                              </button>
+                            )}
+                          {packageRow.is_active &&
+                          packageRow.is_default ? (
+                            <span className="muted">
+                              Set another default to deactivate
+                            </span>
+                          ) : (
                             <button
                               type="button"
-                              className="btn btn-secondary"
+                              className={
+                                packageRow.is_active
+                                  ? "btn btn-danger btn-sm"
+                                  : "btn btn-secondary btn-sm"
+                              }
                               onClick={() =>
-                                handleSetDefault(packageRow)
+                                toggleActive(packageRow)
                               }
                             >
-                              Set default
+                              {packageRow.is_active
+                                ? "Deactivate"
+                                : "Activate"}
                             </button>
                           )}
-                        {packageRow.is_active &&
-                        packageRow.is_default ? (
-                          <span className="muted">
-                            Set another default to deactivate
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className={
-                              packageRow.is_active
-                                ? "btn btn-danger"
-                                : "btn btn-secondary"
-                            }
-                            onClick={() => toggleActive(packageRow)}
-                          >
-                            {packageRow.is_active
-                              ? "Deactivate"
-                              : "Activate"}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                )}
               </tbody>
             </table>
           </div>

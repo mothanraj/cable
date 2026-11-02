@@ -50,7 +50,7 @@ export default function CollectPaymentModal({
 
   return (
     <Modal
-      title={`Collect payment — ${customer.customer_name}`}
+      title={`Collect payment for ${customer.customer_name}`}
       onClose={onClose}
       footer={
         <>

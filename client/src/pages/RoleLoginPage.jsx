@@ -90,7 +90,7 @@ export default function RoleLoginPage({
       setError(
         apiMessage ||
           (submitError.request && !submitError.response
-            ? "Login failed. Check that the API is running."
+            ? "Cannot reach the API. Check that the server is running and that this origin is allowed by CORS."
             : "Login failed.")
       );
     } finally {

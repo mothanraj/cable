@@ -44,6 +44,21 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.client_url.split(",")
+            if origin.strip()
+        ]
+
+    @property
+    def cors_origin_regex(self) -> str | None:
+        if self.is_production:
+            return None
+
+        return r"http://(localhost|127\.0\.0\.1)(:\d+)?"
+
+    @property
     def database_url(self) -> str:
         return (
             f"postgresql://{self.db_user}:{self.db_password}"

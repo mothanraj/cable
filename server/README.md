@@ -71,6 +71,21 @@ psql "<supabase-session-pooler-connection-string>" -f D:\cable\database\supabase
 This enables RLS and revokes access from the `anon`/`authenticated` roles.
 The API connects as the `postgres` role, which bypasses RLS.
 
+## Deploy (Render, single service)
+
+The root `Dockerfile` builds the React client and serves it from FastAPI, so the
+API and UI share one origin (`https://<service>.onrender.com`). This keeps the
+refresh cookie same-origin and avoids CORS.
+
+- Render service type: **Web Service**, runtime **Docker**.
+- Root Directory: blank. Dockerfile Path: `./Dockerfile`.
+- Health Check Path: `/api/v1/health`.
+- Environment: `APP_ENV=production`, all `DB_*` values, `JWT_*` secrets, and
+  `CLIENT_URL=https://<service>.onrender.com`. Do not set `PORT` or
+  `VITE_API_URL` (the image builds the client against `/api/v1`).
+- The client build is copied to `server/static` inside the image. FastAPI mounts
+  it only when that directory exists, so local development is unchanged.
+
 ## Notes
-- React client (`client/`) is unchanged; `VITE_API_URL=http://localhost:5000/api/v1`
+- React client (`client/`): `VITE_API_URL=http://localhost:5000/api/v1` for local dev
 - Legacy Node Express code (if present) is not used; Python is the API runtime
