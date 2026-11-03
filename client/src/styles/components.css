@@ -392,6 +392,22 @@ table.data-table th {
   white-space: nowrap;
 }
 
+table.data-table th:first-child,
+table.data-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  box-shadow: 1px 0 0 var(--line);
+}
+
+table.data-table th:first-child {
+  z-index: 3;
+}
+
+table.data-table td:first-child {
+  background: var(--surface);
+}
+
 table.data-table td {
   font-size: 0.9rem;
 }

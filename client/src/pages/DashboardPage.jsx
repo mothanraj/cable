@@ -187,6 +187,7 @@ export default function DashboardPage({ title }) {
       {!loading && !error && summary && (
         <>
           <div className="dashboard-stats">
+            <p className="stat-group-label">Collection status</p>
             <div className="stats-grid stats-grid--dashboard">
               <StatCard
                 label="Paid"
@@ -228,6 +229,7 @@ export default function DashboardPage({ title }) {
               />
             </div>
 
+            <p className="stat-group-label">This month</p>
             <div className="stats-grid stats-grid--dashboard">
               <StatCard
                 label="Total customers"

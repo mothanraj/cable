@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import AppHeader from "./AppHeader";
 import Sidebar from "./Sidebar";
@@ -19,13 +19,17 @@ export default function AppLayout() {
   const location = useLocation();
   const pageTitle = PAGE_TITLES[location.pathname] || "Cable Management";
 
+  useEffect(() => {
+    document.body.classList.toggle("modal-open", menuOpen);
+    return () => document.body.classList.remove("modal-open");
+  }, [menuOpen]);
+
   return (
     <div className="app-shell">
-      <div className="aurora-bg" aria-hidden="true">
-        <span className="aurora-blob aurora-blob--a" />
-        <span className="aurora-blob aurora-blob--b" />
-        <span className="aurora-blob aurora-blob--c" />
-      </div>
+      <div
+        className="aurora-bg"
+        aria-hidden="true"
+      />
 
       <Sidebar
         open={menuOpen}

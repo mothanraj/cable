@@ -26,14 +26,6 @@
   .stats-grid--detail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .auth-floaters {
-    display: none;
-  }
-
-  .auth-copy h1 {
-    font-size: clamp(2rem, 3.4vw, 2.8rem);
-  }
 }
 
 @media (max-width: 1100px) {
@@ -86,8 +78,12 @@
 }
 
 @media (max-width: 900px) {
+  :root {
+    --header-h: 60px;
+  }
+
   .sidebar {
-    width: min(84vw, 304px);
+    width: min(84vw, 300px);
     transform: translateX(-104%);
     transition: transform 0.34s var(--ease-spring);
   }
@@ -126,10 +122,6 @@
     display: inline-flex;
   }
 
-  .header-context {
-    display: none;
-  }
-
   .header-brand-mobile {
     display: flex;
   }
@@ -151,7 +143,7 @@
   .app-content {
     width: 100%;
     margin-left: 0;
-    padding: calc(var(--header-h) + 20px) 18px 36px;
+    padding: calc(var(--header-h) + 16px) 16px 32px;
   }
 
   .page-header {
@@ -174,15 +166,8 @@
   }
 
   .auth-page {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-visual {
-    display: none;
-  }
-
-  .auth-main {
     min-height: 100vh;
+    padding: 24px 16px;
   }
 
   .form-grid.two {
@@ -219,13 +204,37 @@
     display: none;
   }
 
+  table.data-table {
+    min-width: 640px;
+  }
+
+  table.data-table th,
+  table.data-table td {
+    padding: 10px 12px;
+    font-size: 0.84rem;
+  }
+
+  .table-wrap {
+    mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  }
+
+  .panel-header {
+    padding: 13px 16px;
+  }
+
+  .health-body {
+    padding: 18px;
+    gap: 20px;
+  }
+
   .stats-grid--summary,
   .stats-grid--detail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .summary-chips {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
   .toolbar--glass {
@@ -252,10 +261,6 @@
     flex: 1 1 auto;
   }
 
-  .stats-grid--summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .auth-card {
     padding: 26px 22px;
   }
@@ -265,7 +270,42 @@
   .stats-grid--dashboard,
   .stats-grid--summary,
   .stats-grid--detail {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .stat-card {
+    min-height: 0;
+    padding: 12px 12px;
+    gap: 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .stat-card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+
+  .stat-card-label {
+    font-size: 0.72rem;
+  }
+
+  .stat-card-number {
+    font-size: 1.28rem;
+  }
+
+  .stat-card-value {
+    font-size: 0.68rem;
+  }
+
+  .auth-card {
+    padding: 26px 20px 22px;
+  }
+
+  .auth-card-head h1,
+  .auth-card-head h2 {
+    font-size: 1.35rem;
   }
 
   .health-insights {
@@ -326,17 +366,17 @@
 
   .auth-card-head h1,
   .auth-card-head h2 {
-    font-size: 1.45rem;
-  }
-
-  .auth-copy h1 {
-    font-size: 1.9rem;
+    font-size: 1.4rem;
   }
 }
 
 @media (max-width: 400px) {
   .header-brand-mobile strong {
     display: none;
+  }
+
+  .stat-card-number {
+    font-size: 1.16rem;
   }
 
   .page-header h1 {

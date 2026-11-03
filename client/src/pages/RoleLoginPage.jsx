@@ -107,19 +107,16 @@ export default function RoleLoginPage({
 
   return (
     <div className="auth-page">
-      <aside className="auth-visual">
-        <div className="auth-visual-top">
+      <div className="auth-stack">
+        <div className="auth-brand">
           <BrandMark />
-          <span className="auth-visual-brand">
+          <span className="auth-brand-copy">
             <strong>Cable</strong>
             <span>Management</span>
           </span>
         </div>
 
-      </aside>
-
-      <main className="auth-main">
-        <section className="auth-card">
+      <section className="auth-card">
           <header className="auth-card-head">
             <span
               className="auth-card-icon"
@@ -220,7 +217,7 @@ export default function RoleLoginPage({
             </p>
           )}
         </section>
-      </main>
+      </div>
     </div>
   );
 }

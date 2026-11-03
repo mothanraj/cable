@@ -12,12 +12,9 @@ import { NavLink } from "react-router-dom";
 import BrandMark from "../components/BrandMark";
 import { useAuth } from "../context/AuthContext";
 import { getInitials } from "../utils/names";
-
 export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
-
   const isAdmin = user?.role === "ADMIN";
-
   const groups = [
     {
       label: "Overview",
@@ -26,7 +23,6 @@ export default function Sidebar({ open, onClose }) {
           to: isAdmin ? "/admin" : "/dashboard",
           label: "Dashboard",
           icon: LayoutDashboard,
-          tone: "indigo",
           end: true,
         },
       ],
@@ -38,24 +34,20 @@ export default function Sidebar({ open, onClose }) {
           to: "/customers",
           label: "Customers",
           icon: Users,
-          tone: "cyan",
         },
         {
           to: "/payments",
           label: "Payments",
           icon: CreditCard,
-          tone: "emerald",
         },
         {
           to: "/reports",
           label: "Reports",
           icon: FileText,
-          tone: "amber",
         },
       ],
     },
   ];
-
   if (isAdmin) {
     groups.push({
       label: "Administration",
@@ -64,24 +56,20 @@ export default function Sidebar({ open, onClose }) {
           to: "/users",
           label: "Users",
           icon: ShieldCheck,
-          tone: "pink",
         },
         {
           to: "/places",
           label: "Places",
           icon: MapPin,
-          tone: "violet",
         },
         {
           to: "/packages",
           label: "Packages",
           icon: Package,
-          tone: "blue",
         },
       ],
     });
   }
-
   return (
     <>
       <aside
@@ -105,15 +93,12 @@ export default function Sidebar({ open, onClose }) {
             <X size={20} />
           </button>
         </div>
-
         <nav className="sidebar-nav">
           {groups.map((group) => (
             <div key={group.label}>
               <p className="nav-section">{group.label}</p>
-
               {group.links.map((link) => {
                 const Icon = link.icon;
-
                 return (
                   <NavLink
                     key={link.to}
@@ -121,9 +106,7 @@ export default function Sidebar({ open, onClose }) {
                     end={link.end}
                     onClick={onClose}
                     className={({ isActive }) =>
-                      `nav-link tone-${link.tone} ${
-                        isActive ? "active" : ""
-                      }`
+                      `nav-link ${isActive ? "active" : ""}`
                     }
                   >
                     <span
@@ -144,7 +127,6 @@ export default function Sidebar({ open, onClose }) {
             </div>
           ))}
         </nav>
-
         <div className="sidebar-foot">
           <div className="sidebar-user">
             <span className="avatar avatar--sm">
@@ -159,7 +141,6 @@ export default function Sidebar({ open, onClose }) {
           </div>
         </div>
       </aside>
-
       <div
         className={`sidebar-overlay ${open ? "show" : ""}`}
         onClick={onClose}

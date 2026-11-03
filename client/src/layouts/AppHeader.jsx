@@ -31,12 +31,9 @@ export default function AppHeader({ onMenuClick, title }) {
         <strong>Cable</strong>
       </span>
 
-      <div className="header-context">
-        <span className="header-eyebrow">Workspace</span>
-        <span className="header-title">
-          {title || "Cable Management"}
-        </span>
-      </div>
+      <span className="header-title">
+        {title || "Cable Management"}
+      </span>
 
       <span className="header-date">
         <CalendarDays size={14} aria-hidden="true" />
