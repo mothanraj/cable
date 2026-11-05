@@ -4,21 +4,22 @@ from app.config.database import get_connection
 
 
 def _build_report(records: list[dict[str, Any]]) -> dict[str, Any]:
-    total_customers = len(records)
-    total_billed = sum(float(row["monthly_amount"] or 0) for row in records)
-    total_collected = sum(float(row["total_paid"] or 0) for row in records)
+    effective = [r for r in records if r.get("is_effective", True)]
+    total_customers = len(effective)
+    total_billed = sum(float(r["due_amount"] or 0) for r in effective)
+    total_collected = sum(float(r["total_paid"] or 0) for r in effective)
     total_outstanding = sum(
-        float(row["balance_amount"] or 0) for row in records
+        float(r["balance_amount"] or 0) for r in effective
     )
-    paid_count = sum(1 for row in records if row["payment_status"] == "PAID")
+    paid_count = sum(1 for r in effective if r["payment_status"] == "PAID")
     partial_count = sum(
-        1 for row in records if row["payment_status"] == "PARTIAL"
+        1 for r in effective if r["payment_status"] == "PARTIAL"
     )
     unpaid_count = sum(
-        1 for row in records if row["payment_status"] == "UNPAID"
+        1 for r in effective if r["payment_status"] == "UNPAID"
     )
     overpaid_count = sum(
-        1 for row in records if row["payment_status"] == "OVERPAID"
+        1 for r in effective if r["payment_status"] == "OVERPAID"
     )
 
     return {
@@ -72,6 +73,9 @@ def _get_billing_report_by_month(
                   cbs.billing_month,
                   cbs.package_name,
                   cbs.monthly_amount,
+                  cbs.arrears_amount,
+                  cbs.due_amount,
+                  cbs.is_effective,
                   cbs.total_paid,
                   cbs.balance_amount,
                   cbs.payment_status
@@ -145,17 +149,23 @@ def _get_billing_report_by_date_range(
                   mb.billing_month,
                   mb.package_name,
                   mb.monthly_amount,
+                  mb.arrears_amount,
+                  mb.monthly_amount + mb.arrears_amount AS due_amount,
+                  (mb.rolled_forward_to_billing_id IS NULL) AS is_effective,
                   COALESCE(rp.total_paid, 0) AS total_paid,
                   GREATEST(
-                    mb.monthly_amount - COALESCE(rp.total_paid, 0),
+                    mb.monthly_amount + mb.arrears_amount
+                    - COALESCE(rp.total_paid, 0),
                     0
                   ) AS balance_amount,
                   CASE
                     WHEN COALESCE(rp.total_paid, 0) = 0
                       THEN 'UNPAID'
-                    WHEN COALESCE(rp.total_paid, 0) < mb.monthly_amount
+                    WHEN COALESCE(rp.total_paid, 0)
+                         < mb.monthly_amount + mb.arrears_amount
                       THEN 'PARTIAL'
-                    WHEN COALESCE(rp.total_paid, 0) > mb.monthly_amount
+                    WHEN COALESCE(rp.total_paid, 0)
+                         > mb.monthly_amount + mb.arrears_amount
                       THEN 'OVERPAID'
                     ELSE 'PAID'
                   END AS payment_status,

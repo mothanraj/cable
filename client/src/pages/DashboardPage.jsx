@@ -96,6 +96,10 @@ export default function DashboardPage({ title }) {
     };
 
     for (const row of data?.billing || []) {
+      if (row.is_effective === false) {
+        continue;
+      }
+
       if (row.payment_status === "PAID") {
         totals.PAID += Number(row.total_paid || 0);
       } else if (
@@ -355,6 +359,8 @@ export default function DashboardPage({ title }) {
                     <th>Customer</th>
                     <th>Package</th>
                     <th className="col-num">Amount</th>
+                    <th className="col-num">Arrears</th>
+                    <th className="col-num">Due</th>
                     <th className="col-num">Paid</th>
                     <th className="col-num">Balance</th>
                     <th className="col-num">Overpaid</th>
@@ -365,7 +371,7 @@ export default function DashboardPage({ title }) {
                 <tbody>
                   {(data.billing || []).length === 0 && (
                     <tr>
-                      <td colSpan={9} className="empty-state">
+                      <td colSpan={11} className="empty-state">
                         No billing records for this month.
                       </td>
                     </tr>
@@ -386,6 +392,20 @@ export default function DashboardPage({ title }) {
                         {formatMoney(row.monthly_amount)}
                       </td>
                       <td className="col-num">
+                        {formatMoney(
+                          Number(row.arrears_amount || 0)
+                        )}
+                      </td>
+                      <td className="col-num">
+                        {formatMoney(
+                          Number(
+                            row.due_amount ??
+                              Number(row.monthly_amount || 0) +
+                                Number(row.arrears_amount || 0)
+                          )
+                        )}
+                      </td>
+                      <td className="col-num">
                         {formatMoney(row.total_paid)}
                       </td>
                       <td className="col-num">
@@ -395,9 +415,15 @@ export default function DashboardPage({ title }) {
                         {formatMoney(getOverpaidAmount(row))}
                       </td>
                       <td>
-                        <span className={statusClass(row.payment_status)}>
-                          {row.payment_status}
-                        </span>
+                        {row.is_effective === false ? (
+                          <span className="status-pill status-carried">
+                            Carried forward
+                          </span>
+                        ) : (
+                          <span className={statusClass(row.payment_status)}>
+                            {row.payment_status}
+                          </span>
+                        )}
                       </td>
                       <td>
                         {row.assigned_user_name ||

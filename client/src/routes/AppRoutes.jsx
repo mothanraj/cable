@@ -76,10 +76,6 @@ export default function AppRoutes() {
             path="/payments"
             element={<PaymentsPage />}
           />
-          <Route
-            path="/reports"
-            element={<ReportsPage />}
-          />
 
           <Route
             element={
@@ -100,6 +96,10 @@ export default function AppRoutes() {
             <Route
               path="/places"
               element={<PlacesPage />}
+            />
+            <Route
+              path="/reports"
+              element={<ReportsPage />}
             />
             <Route
               path="/packages"

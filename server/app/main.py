@@ -6,7 +6,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -49,7 +48,23 @@ def create_app() -> FastAPI:
     )
 
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_handler(_request: Request, _exc: RateLimitExceeded):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "success": False,
+                "error": {
+                    "code": "RATE_LIMITED",
+                    "message": (
+                        "Too many attempts. Please wait a few minutes "
+                        "before trying again."
+                    ),
+                },
+            },
+        )
+
     app.add_middleware(SlowAPIMiddleware)
 
     app.add_middleware(

@@ -34,6 +34,14 @@ export async function deactivateCustomer(customerId) {
   return response.data.data.customer;
 }
 
+export async function reorderCustomers(orderedIds) {
+  const response = await apiClient.patch(
+    "/customers/reorder",
+    { orderedIds }
+  );
+  return response.data.data;
+}
+
 export async function updateCustomerOrder(
   customerId,
   displayOrder

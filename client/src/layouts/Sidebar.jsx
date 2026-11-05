@@ -40,11 +40,15 @@ export default function Sidebar({ open, onClose }) {
           label: "Payments",
           icon: CreditCard,
         },
-        {
-          to: "/reports",
-          label: "Reports",
-          icon: FileText,
-        },
+        ...(isAdmin
+          ? [
+              {
+                to: "/reports",
+                label: "Reports",
+                icon: FileText,
+              },
+            ]
+          : []),
       ],
     },
   ];

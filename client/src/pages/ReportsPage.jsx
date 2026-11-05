@@ -96,13 +96,20 @@ function sumField(records, key) {
 }
 
 function summarize(records) {
+  const effective = records.filter(
+    (row) => row.is_effective !== false
+  );
   return {
-    count: records.length,
-    totalBilled: sumField(records, "monthly_amount"),
-    totalCollected: sumField(records, "total_paid"),
-    totalOutstanding: sumField(records, "balance_amount"),
-    totalOverpaid: records.reduce(
-      (sum, row) => sum + getOverpaidAmount(row),
+    count: effective.length,
+    totalBilled: sumField(effective, "due_amount"),
+    totalCollected: sumField(effective, "total_paid"),
+    totalOutstanding: sumField(
+      effective,
+      "balance_amount"
+    ),
+    totalOverpaid: effective.reduce(
+      (sum, row) =>
+        sum + getOverpaidAmount(row),
       0
     ),
   };
@@ -115,7 +122,7 @@ function ReportTable({
   showLastPayment = false,
 }) {
   const columnCount =
-    12 + (showBillingMonth ? 1 : 0) + (showLastPayment ? 1 : 0);
+    14 + (showBillingMonth ? 1 : 0) + (showLastPayment ? 1 : 0);
 
   return (
     <div className="table-wrap">
@@ -131,6 +138,8 @@ function ReportTable({
             <th>Package</th>
             {showBillingMonth && <th>Billing month</th>}
             <th className="col-num">Amount</th>
+            <th className="col-num">Arrears</th>
+            <th className="col-num">Due</th>
             <th className="col-num">Paid</th>
             <th className="col-num">Balance</th>
             <th className="col-num">Overpaid</th>
@@ -165,6 +174,16 @@ function ReportTable({
                 {formatMoney(row.monthly_amount)}
               </td>
               <td className="col-num">
+                {formatMoney(row.arrears_amount)}
+              </td>
+              <td className="col-num">
+                {formatMoney(
+                  row.due_amount ??
+                    Number(row.monthly_amount || 0) +
+                      Number(row.arrears_amount || 0)
+                )}
+              </td>
+              <td className="col-num">
                 {formatMoney(row.total_paid)}
               </td>
               <td className="col-num">
@@ -181,9 +200,15 @@ function ReportTable({
                 </td>
               )}
               <td>
-                <span className={statusClass(row.payment_status)}>
-                  {row.payment_status}
-                </span>
+                {row.is_effective === false ? (
+                  <span className="status-pill status-carried">
+                    Carried forward
+                  </span>
+                ) : (
+                  <span className={statusClass(row.payment_status)}>
+                    {row.payment_status}
+                  </span>
+                )}
               </td>
             </tr>
           ))}
@@ -394,21 +419,26 @@ export default function ReportsPage() {
   );
 
   const groupedRecords = useMemo(
-    () => ({
-      PAID: filteredRecords.filter(
-        (row) => row.payment_status === "PAID"
-      ),
-      OVERPAID: filteredRecords.filter(
-        (row) => row.payment_status === "OVERPAID"
-      ),
-      PARTIAL: filteredRecords.filter(
-        (row) => row.payment_status === "PARTIAL"
-      ),
-      UNPAID: filteredRecords.filter(
-        (row) => row.payment_status === "UNPAID"
-      ),
-    }),
-    [filteredRecords]
+    () => {
+      const effective = records.filter(
+        (row) => row.is_effective !== false
+      );
+      return {
+        PAID: effective.filter(
+          (row) => row.payment_status === "PAID"
+        ),
+        OVERPAID: effective.filter(
+          (row) => row.payment_status === "OVERPAID"
+        ),
+        PARTIAL: effective.filter(
+          (row) => row.payment_status === "PARTIAL"
+        ),
+        UNPAID: effective.filter(
+          (row) => row.payment_status === "UNPAID"
+        ),
+      };
+    },
+    [records]
   );
 
   const activeReport = STATUS_REPORTS.find(

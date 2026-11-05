@@ -40,6 +40,10 @@ class UpdateOrderRequest(BaseModel):
     displayOrder: int = Field(ge=0)
 
 
+class ReorderCustomersRequest(BaseModel):
+    orderedIds: list[str] = Field(min_length=1, max_length=1000)
+
+
 class AssignCustomerRequest(BaseModel):
     assignedUserId: str
 
@@ -78,6 +82,19 @@ def get_customer_by_id(user: CurrentUser, customer_id: str):
             status_code=404,
         )
     return success_response({"customer": serialize_row(customer)})
+
+
+@router.patch("/reorder")
+def reorder_customers(
+    user: CurrentUser,
+    body: ReorderCustomersRequest,
+):
+    updated = customer_service.reorder_customers(
+        ordered_ids=body.orderedIds,
+        user_id=user["id"],
+        role=user["role"],
+    )
+    return success_response({"reordered": updated})
 
 
 @router.post("")

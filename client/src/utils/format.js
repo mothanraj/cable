@@ -23,7 +23,8 @@ export function formatMoney(value) {
 
 export function getOverpaidAmount(row) {
   return Math.max(
-    Number(row.total_paid || 0) - Number(row.monthly_amount || 0),
+    Number(row.total_paid || 0) -
+      Number(row.due_amount ?? row.monthly_amount ?? 0),
     0
   );
 }
@@ -32,5 +33,6 @@ export function statusClass(status) {
   if (status === "OVERPAID") return "status-pill status-overpaid";
   if (status === "PAID") return "status-pill status-paid";
   if (status === "PARTIAL") return "status-pill status-partial";
+  if (status === "UNPAID") return "status-pill status-unpaid";
   return "status-pill status-unpaid";
 }

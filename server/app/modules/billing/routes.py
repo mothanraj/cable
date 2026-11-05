@@ -1,7 +1,7 @@
 import re
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from psycopg.errors import UniqueViolation
 
 from app.middleware.auth import CurrentUser
@@ -17,6 +17,11 @@ BILLING_MONTH_RE = re.compile(r"^\d{4}-\d{2}-01$")
 
 class GenerateBillingRequest(BaseModel):
     customerId: str
+    billingMonth: str
+
+
+class GenerateBillingBulkRequest(BaseModel):
+    customerIds: list[str] = Field(min_length=1, max_length=500)
     billingMonth: str
 
 
@@ -72,7 +77,7 @@ def generate_billing(user: CurrentUser, body: GenerateBillingRequest):
         )
 
     try:
-        billing = billing_service.generate_billing(
+        result = billing_service.generate_billing(
             customer_id=body.customerId,
             billing_month=body.billingMonth,
             user_id=user["id"],
@@ -87,7 +92,7 @@ def generate_billing(user: CurrentUser, body: GenerateBillingRequest):
             status_code=409,
         ) from exc
 
-    if billing is None:
+    if result is None:
         raise AppError(
             code="CUSTOMER_NOT_FOUND",
             message=(
@@ -97,6 +102,53 @@ def generate_billing(user: CurrentUser, body: GenerateBillingRequest):
         )
 
     return success_response(
-        {"billing": serialize_row(billing)},
+        {
+            "billing": serialize_row(result["billing"]),
+            "previousOverpaid": result["previousOverpaid"],
+        },
         status_code=201,
+    )
+
+
+@router.post("/generate-bulk")
+def generate_billing_bulk(
+    user: CurrentUser,
+    body: GenerateBillingBulkRequest,
+):
+    if not BILLING_MONTH_RE.match(body.billingMonth):
+        raise AppError(
+            code="INVALID_REQUEST",
+            message=(
+                "Customer IDs and billing month are required. "
+                "Billing month must use YYYY-MM-01 format."
+            ),
+            status_code=400,
+        )
+
+    customer_ids = list(
+        dict.fromkeys(
+            str(cid).strip() for cid in body.customerIds if str(cid).strip()
+        )
+    )
+
+    if not customer_ids:
+        raise AppError(
+            code="INVALID_REQUEST",
+            message="Provide at least one customer ID.",
+            status_code=400,
+        )
+
+    result = billing_service.generate_billing_bulk(
+        customer_ids=customer_ids,
+        billing_month=body.billingMonth,
+        user_id=user["id"],
+        role=user["role"],
+    )
+
+    return success_response(
+        {
+            "generated": result["generated"],
+            "skipped": result["skipped"],
+            "failed": result["failed"],
+        }
     )

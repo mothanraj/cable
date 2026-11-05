@@ -92,14 +92,32 @@ export default function RoleLoginPage({
 
       navigate(homePath);
     } catch (submitError) {
+      const status = submitError.response?.status;
       const apiMessage =
         submitError.response?.data?.error?.message;
-      setError(
-        apiMessage ||
-          (submitError.request && !submitError.response
-            ? "Cannot reach the API. Check that the server is running and that this origin is allowed by CORS."
-            : "Login failed.")
-      );
+      const apiCode =
+        submitError.response?.data?.error?.code;
+
+      let message;
+
+      if (apiCode === "INVALID_CREDENTIALS" || status === 401) {
+        message = "You have entered wrong username or password.";
+      } else if (status === 429) {
+        message =
+          apiMessage ||
+          "Too many attempts. Please wait a few minutes before trying again.";
+      } else if (status === 503) {
+        message =
+          apiMessage ||
+          "The service is temporarily unavailable. Please try again shortly.";
+      } else if (submitError.request && !submitError.response) {
+        message =
+          "Cannot reach the API. Check that the server is running and that this origin is allowed by CORS.";
+      } else {
+        message = apiMessage || "Login failed.";
+      }
+
+      setError(message);
     } finally {
       setSubmitting(false);
     }

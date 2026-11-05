@@ -13,13 +13,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, IndianRupee, Pencil, Plus, ReceiptText, Search, Users } from "lucide-react";
-import { generateBilling, getBilling } from "../../api/billing";
+import { ChevronDown, ChevronUp, GripVertical, IndianRupee, Pencil, Plus, ReceiptText, Search, Users } from "lucide-react";
+import { generateBilling, generateBillingBulk, getBilling } from "../../api/billing";
 import {
   createCustomer,
   getCustomers,
+  reorderCustomers,
   updateCustomer,
-  updateCustomerOrder,
 } from "../../api/customers";
 import { getPayments } from "../../api/payments";
 import CollectPaymentModal from "../../components/CollectPaymentModal";
@@ -45,6 +45,24 @@ const FILTERS = {
   DATE: "date",
 };
 
+function groupCustomersByPlace(list) {
+  const map = new Map();
+  for (const customer of list) {
+    const key = customer.place_id || "unassigned";
+    if (!map.has(key)) {
+      map.set(key, {
+        id: key,
+        name: customer.place || "Unassigned",
+        customers: [],
+      });
+    }
+    map.get(key).customers.push(customer);
+  }
+  return [...map.values()].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+}
+
 function SortableCustomerCard({
   customer,
   bill,
@@ -53,6 +71,13 @@ function SortableCustomerCard({
   onEdit,
   onCollect,
   onGenerateBill,
+  onMoveUp,
+  onMoveDown,
+  isFirst = false,
+  isLast = false,
+  selected = false,
+  onToggleSelect,
+  dragDisabled = false,
 }) {
   const {
     attributes,
@@ -78,15 +103,54 @@ function SortableCustomerCard({
           : "customer-card--none"
       }`}
     >
-      <button
-        type="button"
-        className="drag-handle"
-        aria-label="Reorder customer"
-        {...attributes}
-        {...listeners}
+      {!dragDisabled && (
+        <div className="move-buttons">
+          <button
+            type="button"
+            className="move-button"
+            aria-label="Move customer up"
+            title="Move up"
+            disabled={isFirst}
+            onClick={onMoveUp}
+          >
+            <ChevronUp size={16} />
+          </button>
+          <button
+            type="button"
+            className="move-button"
+            aria-label="Move customer down"
+            title="Move down"
+            disabled={isLast}
+            onClick={onMoveDown}
+          >
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      )}
+
+      {!dragDisabled && (
+        <button
+          type="button"
+          className="drag-handle"
+          aria-label="Reorder customer"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={18} />
+        </button>
+      )}
+
+      <label
+        className="card-checkbox"
+        title="Select customer"
       >
-        <GripVertical size={18} />
-      </button>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect?.(customer.id)}
+          aria-label={`Select ${customer.customer_name}`}
+        />
+      </label>
 
       <span className="avatar avatar--customer" aria-hidden="true">
         {getInitials(customer.customer_name)}
@@ -99,6 +163,17 @@ function SortableCustomerCard({
           </span>
           {customer.customer_name}
         </h2>
+        {Number(customer.overpaid_amount || 0) > 0 && (
+          <span className="customer-overpaid-pill">
+            Overpaid ₹
+            {Number(customer.overpaid_amount).toLocaleString(
+              "en-IN",
+              {
+                maximumFractionDigits: 0,
+              }
+            )}
+          </span>
+        )}
         <p>STB: {customer.stb_number}</p>
         <p>Phone: {customer.phone || "-"}</p>
         <p>Place: {customer.place || "-"}</p>
@@ -114,8 +189,26 @@ function SortableCustomerCard({
         {bill ? (
           <>
             <div className="billing-line">
-              <span>Monthly</span>
+              <span>Package</span>
               <strong>{formatMoney(bill.monthly_amount)}</strong>
+            </div>
+            <div className="billing-line">
+              <span>Arrears</span>
+              <strong>
+                {formatMoney(Number(bill.arrears_amount || 0))}
+              </strong>
+            </div>
+            <div className="billing-line">
+              <span>Due</span>
+              <strong>
+                {formatMoney(
+                  Number(
+                    bill.due_amount ??
+                      Number(bill.monthly_amount || 0) +
+                        Number(bill.arrears_amount || 0)
+                  )
+                )}
+              </strong>
             </div>
             <div className="billing-line">
               <span>Paid</span>
@@ -197,6 +290,8 @@ export default function CustomersPage() {
   const [formMode, setFormMode] = useState("create");
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -336,23 +431,81 @@ export default function CustomersPage() {
     );
   }, [filteredCustomers, placeFilter]);
 
-  const groupedCustomers = useMemo(() => {
+  const visibleCustomerIds = useMemo(
+    () =>
+      placeFilteredCustomers.map(
+        (customer) => customer.id
+      ),
+    [placeFilteredCustomers]
+  );
+
+  const allVisibleSelected =
+    visibleCustomerIds.length > 0 &&
+    visibleCustomerIds.every((id) =>
+      selectedIds.has(id)
+    );
+
+  function toggleCustomerSelection(customerId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(customerId)) {
+        next.delete(customerId);
+      } else {
+        next.add(customerId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+
+      if (allVisibleSelected) {
+        for (const id of visibleCustomerIds) {
+          next.delete(id);
+        }
+      } else {
+        for (const id of visibleCustomerIds) {
+          next.add(id);
+        }
+      }
+
+      return next;
+    });
+  }
+
+  const groupedCustomers = useMemo(
+    () => groupCustomersByPlace(placeFilteredCustomers),
+    [placeFilteredCustomers]
+  );
+
+  const groupedByUser = useMemo(() => {
+    if (!isAdmin) return [];
+
     const map = new Map();
     for (const customer of placeFilteredCustomers) {
-      const key = customer.place_id || "unassigned";
+      const key = customer.assigned_user_id || "unassigned";
       if (!map.has(key)) {
         map.set(key, {
           id: key,
-          name: customer.place || "Unassigned",
+          name:
+            customer.assigned_user_name ||
+            customer.assigned_username ||
+            "Unassigned",
           customers: [],
         });
       }
       map.get(key).customers.push(customer);
     }
-    return [...map.values()].sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-  }, [placeFilteredCustomers]);
+
+    return [...map.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((userGroup) => ({
+        ...userGroup,
+        placeGroups: groupCustomersByPlace(userGroup.customers),
+      }));
+  }, [placeFilteredCustomers, isAdmin]);
 
   async function handleCreate(payload) {
     await createCustomer(payload);
@@ -369,11 +522,18 @@ export default function CustomersPage() {
   async function handleGenerateBill(customer) {
     try {
       setError("");
-      await generateBilling({
+      const result = await generateBilling({
         customerId: customer.id,
         billingMonth: getCurrentBillingMonth(),
       });
-      setSuccess(`Billing generated for ${customer.customer_name}.`);
+      const overpaid = result?.previousOverpaid;
+      const overpaidMessage =
+        Number(overpaid?.amount || 0) > 0
+          ? ` Overpaid balance from previous bills: ${formatMoney(overpaid.amount)}.`
+          : "";
+      setSuccess(
+        `Billing generated for ${customer.customer_name}.${overpaidMessage}`
+      );
       await loadData();
     } catch (err) {
       setError(
@@ -383,7 +543,110 @@ export default function CustomersPage() {
     }
   }
 
+  async function handleGenerateBillBulk(ids) {
+    if (ids.length === 0) return;
+
+    setError("");
+    setSuccess("");
+    setBulkRunning(true);
+
+    try {
+      const result = await generateBillingBulk({
+        customerIds: ids,
+        billingMonth: getCurrentBillingMonth(),
+      });
+      const generated = result.generated?.length ?? 0;
+      const skipped = result.skipped?.length ?? 0;
+      const failed = result.failed ?? [];
+
+      const parts = [
+        `Generated ${generated} bill${generated === 1 ? "" : "s"}`,
+        `skipped ${skipped} already billed`,
+      ];
+
+      const overpaidItems = (result.generated ?? []).filter(
+        (item) => Number(item?.previousOverpaid?.amount || 0) > 0
+      );
+      const overpaidNote =
+        overpaidItems.length > 0
+          ? ` Overpaid balances: ${overpaidItems
+              .map(
+                (item) =>
+                  `${item.customerName} (${formatMoney(
+                    item.previousOverpaid.amount
+                  )})`
+              )
+              .join(", ")}.`
+          : "";
+
+      setSuccess(`${parts.join(", ")}.${overpaidNote}`);
+
+      if (failed.length > 0) {
+        setError(
+          `Could not generate billing for: ${failed
+            .map((item) => item.message)
+            .join(" ")}`
+        );
+      }
+
+      setSelectedIds(new Set());
+      await loadData();
+    } catch (err) {
+      setError(
+        err.response?.data?.error?.message ||
+          "Unable to generate billing."
+      );
+    } finally {
+      setBulkRunning(false);
+    }
+  }
+
+  async function saveOrder(reordered) {
+    const indexed = reordered.map((item, index) => ({
+      ...item,
+      display_order: index,
+    }));
+    const orderedIds = indexed.map((item) => item.id);
+    const groupIds = new Set(orderedIds);
+    const previousCustomers = customers;
+
+    // Optimistically reorder in local state so the list updates
+    // without refetching billing/payments.
+    setCustomers((prev) => {
+      let cursor = 0;
+      return prev.map((item) =>
+        groupIds.has(item.id) ? indexed[cursor++] : item
+      );
+    });
+
+    try {
+      await reorderCustomers(orderedIds);
+    } catch (err) {
+      setCustomers(previousCustomers);
+      setError(
+        err.response?.data?.error?.message ||
+          "Unable to update order."
+      );
+    }
+  }
+
+  async function moveCustomer(group, customerId, direction) {
+    if (isAdmin) return;
+
+    const index = group.customers.findIndex(
+      (item) => item.id === customerId
+    );
+    const target = index + direction;
+    if (index < 0 || target >= group.customers.length || target < 0) {
+      return;
+    }
+
+    await saveOrder(arrayMove(group.customers, index, target));
+  }
+
   async function handleDragEnd(group, event) {
+    if (isAdmin) return;
+
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -395,27 +658,76 @@ export default function CustomersPage() {
     );
     if (oldIndex < 0 || newIndex < 0) return;
 
-    const reordered = arrayMove(
-      group.customers,
-      oldIndex,
-      newIndex
-    );
+    await saveOrder(arrayMove(group.customers, oldIndex, newIndex));
+  }
 
-    try {
-      for (let index = 0; index < reordered.length; index += 1) {
-        const item = reordered[index];
-        if (item.display_order !== index) {
-          await updateCustomerOrder(item.id, index);
-        }
-      }
-      await loadData();
-    } catch (err) {
-      setError(
-        err.response?.data?.error?.message ||
-          "Unable to update order."
-      );
-      await loadData();
-    }
+  function renderPlaceGroup(group) {
+    return (
+      <div className="place-group" key={group.id}>
+        <div className="place-group-header">
+          <h2>
+            <span className="place-dot" aria-hidden="true" />
+            {group.name}
+          </h2>
+          <span className="count-chip">
+            {group.customers.length} customers
+          </span>
+        </div>
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(event) => handleDragEnd(group, event)}
+        >
+          <SortableContext
+            items={group.customers.map((item) => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="customer-list">
+              {group.customers.map((customer, index) => {
+                const bill = billingByCustomer.get(customer.id);
+                const paymentInfo = customerPaymentInfo.get(
+                  customer.id
+                );
+
+                return (
+                  <SortableCustomerCard
+                    key={customer.id}
+                    customer={customer}
+                    bill={bill}
+                    serial={index + 1}
+                    latestPayment={paymentInfo?.latestPayment}
+                    selected={selectedIds.has(customer.id)}
+                    onToggleSelect={toggleCustomerSelection}
+                    dragDisabled={isAdmin}
+                    isFirst={index === 0}
+                    isLast={index === group.customers.length - 1}
+                    onMoveUp={() =>
+                      moveCustomer(group, customer.id, -1)
+                    }
+                    onMoveDown={() =>
+                      moveCustomer(group, customer.id, 1)
+                    }
+                    onEdit={(item) => {
+                      setFormMode("edit");
+                      setEditingCustomer(item);
+                      setFormOpen(true);
+                    }}
+                    onCollect={(item, billRow) =>
+                      setPaymentTarget({
+                        customer: item,
+                        bill: billRow,
+                      })
+                    }
+                    onGenerateBill={handleGenerateBill}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
+    );
   }
 
   return (
@@ -423,7 +735,11 @@ export default function CustomersPage() {
       <div className="page-header">
         <div>
           <h1>Customers</h1>
-          <p>Search, bill, collect, and reorder assigned customers.</p>
+          <p>
+            {isAdmin
+              ? "Read-only view of each collector's saved order."
+              : "Search, bill, collect, and reorder your customers."}
+          </p>
         </div>
         {isAdmin && (
           <div className="page-actions">
@@ -516,6 +832,39 @@ export default function CustomersPage() {
         )}
       </div>
 
+      {!loading && placeFilteredCustomers.length > 0 && (
+        <div
+          className="billing-bulk-bar"
+          aria-label="Billing actions"
+        >
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              aria-label="Select all visible customers"
+            />
+            <span>Select all</span>
+          </label>
+
+          <div className="billing-bulk-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={bulkRunning || selectedIds.size === 0}
+              onClick={() =>
+                handleGenerateBillBulk([...selectedIds])
+              }
+            >
+              <ReceiptText size={16} aria-hidden="true" />
+              {bulkRunning
+                ? "Generating..."
+                : `Generate bill (${selectedIds.size})`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading && <p className="muted">Loading customers...</p>}
       {error && <p className="error-message">{error}</p>}
 
@@ -529,72 +878,44 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {!loading && placeFilteredCustomers.length > 0 && (
-        <div className="place-groups">
-          {groupedCustomers.map((group) => (
-            <div className="place-group" key={group.id}>
-              <div className="place-group-header">
-                <h2>
-                  <span className="place-dot" aria-hidden="true" />
-                  {group.name}
-                </h2>
-                <span className="count-chip">
-                  {group.customers.length} customers
-                </span>
-              </div>
+      {!loading &&
+        placeFilteredCustomers.length > 0 &&
+        !isAdmin && (
+          <div className="place-groups">
+            {groupedCustomers.map((group) =>
+              renderPlaceGroup(group)
+            )}
+          </div>
+        )}
 
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) =>
-                  handleDragEnd(group, event)
-                }
+      {!loading &&
+        placeFilteredCustomers.length > 0 &&
+        isAdmin && (
+          <div className="user-groups">
+            {groupedByUser.map((userGroup) => (
+              <section
+                className="user-group"
+                key={userGroup.id}
+                aria-label={`Customers for ${userGroup.name}`}
               >
-                <SortableContext
-                  items={group.customers.map(
-                    (item) => item.id
+                <div className="place-group-header user-group-header">
+                  <h2>
+                    <Users size={16} aria-hidden="true" />
+                    {userGroup.name}
+                  </h2>
+                  <span className="count-chip">
+                    {userGroup.customers.length} customers
+                  </span>
+                </div>
+                <div className="user-group-body">
+                  {userGroup.placeGroups.map((group) =>
+                    renderPlaceGroup(group)
                   )}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="customer-list">
-                    {group.customers.map((customer, index) => {
-                      const bill = billingByCustomer.get(
-                        customer.id
-                      );
-                      const paymentInfo =
-                        customerPaymentInfo.get(customer.id);
-
-                      return (
-                        <SortableCustomerCard
-                          key={customer.id}
-                          customer={customer}
-                          bill={bill}
-                          serial={index + 1}
-                          latestPayment={
-                            paymentInfo?.latestPayment
-                          }
-                          onEdit={(item) => {
-                            setFormMode("edit");
-                            setEditingCustomer(item);
-                            setFormOpen(true);
-                          }}
-                          onCollect={(item, billRow) =>
-                            setPaymentTarget({
-                              customer: item,
-                              bill: billRow,
-                            })
-                          }
-                          onGenerateBill={handleGenerateBill}
-                        />
-                      );
-                    })}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </div>
-          ))}
-        </div>
-      )}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
 
       {formOpen && (
         <CustomerFormModal

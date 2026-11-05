@@ -1,15 +1,18 @@
 import re
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
-from app.middleware.auth import CurrentUser
+from app.middleware.auth import require_roles
 from app.modules.reports import service as report_service
 from app.utils.errors import AppError
 from app.utils.responses import success_response
 from app.utils.serialize import serialize_value
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+AdminUser = Annotated[dict, Depends(require_roles("ADMIN"))]
 
 BILLING_MONTH_RE = re.compile(r"^\d{4}-\d{2}-01$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -38,7 +41,7 @@ def _validate_date(value: str | None, field_name: str) -> date | None:
 
 @router.get("/billing")
 def get_billing_report(
-    user: CurrentUser,
+    user: AdminUser,
     billingMonth: str | None = Query(default=None),
     from_date: str | None = Query(default=None, alias="from"),
     to_date: str | None = Query(default=None, alias="to"),

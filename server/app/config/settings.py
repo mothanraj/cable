@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     jwt_issuer: str = "cable-management-api"
     jwt_audience: str = "cable-management-client"
 
-    access_token_expires_minutes: int = 15
+    access_token_expires_minutes: int = 45
     refresh_token_expires_days: int = 7
 
     @property

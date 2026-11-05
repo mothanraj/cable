@@ -21,6 +21,11 @@ def get_dashboard(
         conditions.append("c.assigned_user_id = %s")
 
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    summary_where_sql = (
+        f"{where_sql} AND cbs.is_effective = TRUE"
+        if where_sql
+        else "WHERE cbs.is_effective = TRUE"
+    )
 
     customer_values: list[Any] = []
     customer_conditions = ["c.is_active = TRUE"]
@@ -47,7 +52,7 @@ def get_dashboard(
             cur.execute(
                 f"""
                 SELECT
-                  COALESCE(SUM(cbs.monthly_amount), 0) AS total_billed,
+                  COALESCE(SUM(cbs.due_amount), 0) AS total_billed,
                   COALESCE(SUM(cbs.total_paid), 0) AS total_collected,
                   COALESCE(SUM(cbs.balance_amount), 0) AS total_outstanding,
                   COUNT(
@@ -77,7 +82,7 @@ def get_dashboard(
                 FROM customer_billing_summary cbs
                 INNER JOIN customers c
                   ON c.id = cbs.customer_id
-                {where_sql}
+                {summary_where_sql}
                 """,
                 values,
             )
@@ -98,6 +103,9 @@ def get_dashboard(
                   cbs.billing_month,
                   cbs.package_name,
                   cbs.monthly_amount,
+                  cbs.arrears_amount,
+                  cbs.due_amount,
+                  cbs.is_effective,
                   cbs.total_paid,
                   cbs.balance_amount,
                   cbs.payment_status

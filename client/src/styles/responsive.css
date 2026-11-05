@@ -313,9 +313,18 @@
   }
 
   .customer-card {
-    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-columns: auto auto auto minmax(0, 1fr);
     gap: 10px;
     padding: 14px 14px 14px 18px;
+  }
+
+  .billing-bulk-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .billing-bulk-actions .btn {
+    flex: 1 1 auto;
   }
 
   .customer-billing,
@@ -341,7 +350,8 @@
   }
 
   .modal {
-    max-height: calc(100vh - 24px);
+    width: 100%;
+    max-height: calc(100dvh - 24px);
     border-radius: 18px;
   }
 

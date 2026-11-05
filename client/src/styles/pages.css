@@ -621,6 +621,29 @@
   font-size: 1.08rem;
 }
 
+.user-groups {
+  display: grid;
+  gap: 28px;
+}
+
+.user-group {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.user-group-header h2 {
+  font-size: 1.15rem;
+}
+
+.user-group-body {
+  display: grid;
+  gap: 22px;
+}
+
 .place-dot {
   width: 10px;
   height: 10px;
@@ -634,10 +657,74 @@
   gap: 12px;
 }
 
+.card-checkbox {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: start;
+  width: 26px;
+  height: 34px;
+  cursor: pointer;
+}
+
+.card-checkbox input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--indigo);
+  cursor: pointer;
+}
+
+.billing-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.checkbox-field {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.checkbox-field input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--indigo);
+  cursor: pointer;
+}
+
+.billing-bulk-actions {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.billing-bulk-bar .muted {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
 .customer-card {
   position: relative;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) 220px 180px;
+  grid-template-columns: auto auto auto minmax(0, 1fr) 220px 180px;
   gap: 14px;
   align-items: start;
   padding: 16px 16px 16px 21px;
@@ -722,6 +809,40 @@
   background: var(--violet-soft);
 }
 
+.move-buttons {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.move-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 17px;
+  padding: 0;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out);
+}
+
+.move-button:hover:not(:disabled) {
+  color: var(--violet-ink);
+  background: var(--violet-soft);
+}
+
+.move-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .customer-card h2 {
   display: flex;
   flex-wrap: wrap;
@@ -745,6 +866,24 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.customer-overpaid-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-bottom: 7px;
+  padding: 3px 10px;
+  color: var(--violet-ink);
+  background: linear-gradient(135deg, #f5f0ff, var(--violet-soft));
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .customer-meta {

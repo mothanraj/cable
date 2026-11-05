@@ -15,5 +15,19 @@ export async function generateBilling({
     customerId,
     billingMonth,
   });
-  return response.data.data.billing;
+  return response.data.data;
+}
+
+export async function generateBillingBulk({
+  customerIds,
+  billingMonth,
+}) {
+  const response = await apiClient.post(
+    "/billing/generate-bulk",
+    {
+      customerIds,
+      billingMonth,
+    }
+  );
+  return response.data.data;
 }

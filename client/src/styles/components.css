@@ -259,10 +259,17 @@
 .form-grid {
   display: grid;
   gap: 14px;
+  align-content: start;
 }
 
 .form-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Full-width rows inside a grid form. */
+.form-grid > .form-error,
+.form-grid > .form-grid {
+  grid-column: 1 / -1;
 }
 
 /* ---------- Messages ---------- */
@@ -516,6 +523,12 @@ table.data-table .empty-state {
   border-color: rgba(225, 29, 72, 0.16);
 }
 
+.status-carried {
+  color: var(--ink-muted);
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
 .role-chip {
   display: inline-flex;
   align-items: center;
@@ -656,9 +669,12 @@ table.data-table .empty-state {
 
 .modal {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: min(100%, 540px);
   max-height: calc(100vh - 36px);
-  overflow: auto;
+  max-height: calc(100dvh - 36px);
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-lg);
@@ -667,9 +683,7 @@ table.data-table .empty-state {
 }
 
 .modal::before {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  flex: none;
   display: block;
   height: 4px;
   content: "";
@@ -683,10 +697,12 @@ table.data-table .empty-state {
 }
 
 .modal-header {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 
@@ -719,11 +735,18 @@ table.data-table .empty-state {
 }
 
 .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: grid;
   gap: 14px;
+  align-content: start;
 }
 
 .modal-footer {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
