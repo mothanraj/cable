@@ -81,6 +81,9 @@ def get_billing_report(
             status_code=400,
         )
 
+    from app.modules.customers import service as customer_service
+
+    customer_service.sync_customer_statuses()
     report = report_service.get_billing_report(
         user_id=user["id"],
         role=user["role"],

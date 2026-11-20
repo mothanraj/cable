@@ -42,6 +42,7 @@ def get_current_user(
         "id": payload["sub"],
         "role": payload["role"],
         "username": payload["username"],
+        "sid": payload.get("sid"),
     }
 
 

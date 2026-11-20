@@ -1,78 +1,119 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import apiClient, {
+  refreshAccessTokenWithRetry,
   setAccessToken as setApiAccessToken,
   setOnAuthFailure,
   setOnSessionRefreshed,
 } from "../api/client";
 import AuthContext from "./AuthContext";
+import { ACTIVITY_KEY } from "./sessionKeys";
+
+export const LOGOUT_REASON_KEY = "cable:logoutReason";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessTokenState] = useState(null);
+  const [sessionStartedAt, setSessionStartedAt] =
+    useState(null);
   const [loading, setLoading] = useState(true);
 
   const refreshStarted = useRef(false);
 
-  function updateAccessToken(token) {
+  const updateAccessToken = useCallback((token) => {
     setAccessTokenState(token);
     setApiAccessToken(token);
-  }
+  }, []);
 
-  function clearAuthState() {
+  const clearAuthState = useCallback(() => {
     setUser(null);
+    setSessionStartedAt(null);
     updateAccessToken(null);
-  }
+  }, [updateAccessToken]);
 
-  async function refreshSession() {
-    try {
-      const response = await apiClient.post("/auth/refresh");
-      const data = response.data.data;
-
+  const applySession = useCallback(
+    (data) => {
       setUser(data.user);
+      setSessionStartedAt(
+        data.sessionStartedAt || null
+      );
       updateAccessToken(data.accessToken);
+    },
+    [updateAccessToken]
+  );
 
+  const refreshSession = useCallback(async () => {
+    try {
+      const data = await refreshAccessTokenWithRetry();
+      applySession(data);
       return data.accessToken;
     } catch {
       clearAuthState();
       return null;
     }
-  }
+  }, [applySession, clearAuthState]);
 
-  async function login(username, password) {
-    const response = await apiClient.post("/auth/login", {
-      username,
-      password,
-    });
+  const login = useCallback(
+    async (username, password) => {
+      const response = await apiClient.post(
+        "/auth/login",
+        { username, password }
+      );
 
-    const data = response.data.data;
+      const data = response.data.data;
 
-    setUser(data.user);
-    updateAccessToken(data.accessToken);
+      sessionStorage.removeItem(LOGOUT_REASON_KEY);
 
-    return data;
-  }
+      // A new session starts a new idle clock. Without this, a timestamp
+      // left behind by a previous session (older than the idle timeout)
+      // would make the idle monitor sign the user straight back out.
+      localStorage.setItem(ACTIVITY_KEY, String(Date.now()));
 
-  async function logout() {
-    try {
-      await apiClient.post("/auth/logout");
-    } finally {
-      clearAuthState();
-    }
-  }
+      applySession(data);
+
+      return data;
+    },
+    [applySession]
+  );
+
+  const logout = useCallback(
+    async (reason) => {
+      if (reason) {
+        sessionStorage.setItem(
+          LOGOUT_REASON_KEY,
+          reason
+        );
+      } else {
+        sessionStorage.removeItem(LOGOUT_REASON_KEY);
+      }
+
+      try {
+        await apiClient.post("/auth/logout");
+      } finally {
+        localStorage.removeItem(ACTIVITY_KEY);
+        clearAuthState();
+      }
+    },
+    [clearAuthState]
+  );
 
   useEffect(() => {
     setOnSessionRefreshed((data) => {
-      setUser(data.user);
-      setAccessTokenState(data.accessToken);
-      setApiAccessToken(data.accessToken);
+      applySession(data);
     });
 
-    setOnAuthFailure(() => {
-      setUser(null);
-      setAccessTokenState(null);
-      setApiAccessToken(null);
+    setOnAuthFailure((reason) => {
+      sessionStorage.setItem(
+        LOGOUT_REASON_KEY,
+        reason || "expired"
+      );
+      clearAuthState();
     });
-  }, []);
+  }, [applySession, clearAuthState]);
 
   useEffect(() => {
     if (refreshStarted.current) return;
@@ -82,13 +123,14 @@ export function AuthProvider({ children }) {
     refreshSession().finally(() => {
       setLoading(false);
     });
-  }, []);
+  }, [refreshSession]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
         accessToken,
+        sessionStartedAt,
         loading,
         login,
         logout,

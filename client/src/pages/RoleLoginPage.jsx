@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Link,
   Navigate,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import BrandMark from "../components/BrandMark";
 import { useAuth } from "../context/AuthContext";
+import { LOGOUT_REASON_KEY } from "../context/AuthProvider";
 
 /**
  * Shared login form for a specific role.
@@ -37,7 +38,29 @@ export default function RoleLoginPage({
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [sessionNotice, setSessionNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const reason = sessionStorage.getItem(LOGOUT_REASON_KEY);
+    if (!reason) return;
+
+    sessionStorage.removeItem(LOGOUT_REASON_KEY);
+
+    if (reason === "inactive") {
+      setSessionNotice(
+        "You were signed out after 45 minutes of inactivity."
+      );
+    } else if (reason === "limit") {
+      setSessionNotice(
+        "Your 12-hour session limit was reached. Please sign in again."
+      );
+    } else {
+      setSessionNotice(
+        "Your session expired. Please sign in again."
+      );
+    }
+  }, []);
 
   const isAdminPortal = expectedRole === "ADMIN";
   const homePath = isAdminPortal ? "/admin" : "/dashboard";
@@ -203,6 +226,15 @@ export default function RoleLoginPage({
                 </button>
               </div>
             </label>
+
+            {sessionNotice && (
+              <p
+                className="session-notice"
+                role="status"
+              >
+                {sessionNotice}
+              </p>
+            )}
 
             {error && (
               <p

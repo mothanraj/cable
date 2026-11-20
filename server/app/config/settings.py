@@ -32,8 +32,14 @@ class Settings(BaseSettings):
     jwt_issuer: str = "cable-management-api"
     jwt_audience: str = "cable-management-client"
 
-    access_token_expires_minutes: int = 45
+    # Access tokens are short-lived; active work silently refreshes them.
+    access_token_expires_minutes: int = 15
     refresh_token_expires_days: int = 7
+
+    # A session ends after this long with no user interaction, and is also
+    # capped at this total age even if the user never goes idle.
+    idle_timeout_minutes: int = 45
+    max_session_hours: int = 12
 
     @property
     def environment(self) -> str:

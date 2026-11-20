@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
 from app.config.settings import get_settings
-from app.middleware.auth import client_metadata
+from app.middleware.auth import CurrentUser, client_metadata
 from app.middleware.rate_limit import limiter
 from app.modules.auth import service as auth_service
 from app.utils.errors import AppError
@@ -63,6 +63,7 @@ def login(request: Request, response: Response, body: LoginRequest):
         "data": {
             "user": result["user"],
             "accessToken": result["accessToken"],
+            "sessionStartedAt": result["sessionStartedAt"],
         },
     }
 
@@ -97,6 +98,22 @@ def refresh(request: Request, response: Response):
             "accessToken": result["accessToken"],
         },
     }
+
+
+@router.post("/activity")
+def activity(user: CurrentUser, response: Response):
+    if not auth_service.record_activity(user.get("sid")):
+        response.delete_cookie(
+            REFRESH_COOKIE_NAME,
+            path="/api/v1/auth",
+        )
+        raise AppError(
+            code="INVALID_SESSION",
+            message="Session is invalid or expired.",
+            status_code=401,
+        )
+
+    return {"success": True}
 
 
 @router.post("/logout")

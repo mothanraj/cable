@@ -192,17 +192,21 @@ export default function CustomerFormModal({
         <div className="form-grid two">
           <label className="field">
             <span>STB number</span>
-            <input
-              className="input"
-              value={form.stbNumber}
-              onChange={(event) =>
-                setForm((prev) => ({
-                  ...prev,
-                  stbNumber: event.target.value,
-                }))
-              }
-              required
-            />
+            {!isAdmin && mode === "edit" ? (
+              <div className="input input-readonly">{form.stbNumber}</div>
+            ) : (
+              <input
+                className="input"
+                value={form.stbNumber}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    stbNumber: event.target.value,
+                  }))
+                }
+                required
+              />
+            )}
           </label>
           <label className="field">
             <span>Phone</span>

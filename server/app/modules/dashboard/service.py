@@ -1,6 +1,7 @@
 from typing import Any
 
 from app.config.database import get_connection
+from app.modules.customers.service import get_customer_status_summary
 
 
 def get_dashboard(
@@ -48,6 +49,11 @@ def get_dashboard(
                 customer_values,
             )
             customer_summary = cur.fetchone()
+
+            status_summary = get_customer_status_summary(
+                user_id=user_id,
+                role=role,
+            )
 
             cur.execute(
                 f"""
@@ -178,6 +184,15 @@ def get_dashboard(
         "summary": {
             "totalCustomers": int(
                 customer_summary["total_customers"] or 0
+            ),
+            "activeCustomers": int(
+                status_summary["active_customers"] or 0
+            ),
+            "deactivatedCustomers": int(
+                status_summary["deactivated_customers"] or 0
+            ),
+            "deactivatedBalance": float(
+                status_summary["overdue_balance"] or 0
             ),
             "totalBilled": float(summary["total_billed"] or 0),
             "totalCollected": float(summary["total_collected"] or 0),

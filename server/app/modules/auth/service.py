@@ -1,10 +1,13 @@
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from psycopg import OperationalError
 
 from app.config.database import get_connection
+from app.config.settings import get_settings
 from app.utils.errors import AppError
 from app.utils.jwt import (
+    as_uuid,
     generate_access_token,
     generate_refresh_token,
     verify_refresh_token,
@@ -55,7 +58,6 @@ def login(
                 if not verify_password(user["password_hash"], password):
                     return None
 
-                access_token = generate_access_token(user)
                 refresh_token = generate_refresh_token(user)
                 refresh_token_hash = hash_token(refresh_token)
 
@@ -75,6 +77,7 @@ def login(
                       %s,
                       %s
                     )
+                    RETURNING id, created_at
                     """,
                     (
                         user["id"],
@@ -82,6 +85,10 @@ def login(
                         metadata.get("user_agent"),
                         ip_address,
                     ),
+                )
+                session = cur.fetchone()
+                access_token = generate_access_token(
+                    user, str(session["id"])
                 )
                 conn.commit()
     except OperationalError as exc:
@@ -96,6 +103,7 @@ def login(
         },
         "accessToken": access_token,
         "refreshToken": refresh_token,
+        "sessionStartedAt": session["created_at"].isoformat(),
     }
 
 
@@ -114,6 +122,13 @@ def refresh_session(
     except Exception:
         return None
 
+    settings = get_settings()
+    idle_cutoff = datetime.now(UTC) - timedelta(
+        minutes=settings.idle_timeout_minutes
+    )
+    max_age_cutoff = datetime.now(UTC) - timedelta(
+        hours=settings.max_session_hours
+    )
     token_hash = hash_token(refresh_token)
 
     try:
@@ -126,6 +141,8 @@ def refresh_session(
                       s.user_id,
                       s.expires_at,
                       s.revoked_at,
+                      s.created_at,
+                      s.last_activity_at,
                       u.username,
                       u.full_name,
                       u.role,
@@ -137,10 +154,17 @@ def refresh_session(
                       AND s.user_id = %s
                       AND s.revoked_at IS NULL
                       AND s.expires_at > NOW()
+                      AND s.last_activity_at > %s
+                      AND s.created_at > %s
                       AND u.is_active = TRUE
                     LIMIT 1
                     """,
-                    (token_hash, payload["sub"]),
+                    (
+                        token_hash,
+                        payload["sub"],
+                        idle_cutoff,
+                        max_age_cutoff,
+                    ),
                 )
                 session = cur.fetchone()
 
@@ -154,16 +178,20 @@ def refresh_session(
                     "role": session["role"],
                 }
 
-                access_token = generate_access_token(user)
+                access_token = generate_access_token(
+                    user, str(session["session_id"])
+                )
                 new_refresh_token = generate_refresh_token(user)
                 new_refresh_token_hash = hash_token(new_refresh_token)
 
+                # Refreshing only proves the client had a valid token; it does
+                # not count as user interaction. last_activity_at is updated
+                # only by the explicit /auth/activity endpoint.
                 cur.execute(
                     """
                     UPDATE user_sessions
                     SET
                       refresh_token_hash = %s,
-                      last_activity_at = NOW(),
                       user_agent = COALESCE(%s, user_agent),
                       ip_address = COALESCE(%s, ip_address)
                     WHERE id = %s
@@ -188,7 +216,44 @@ def refresh_session(
         },
         "accessToken": access_token,
         "refreshToken": new_refresh_token,
+        "sessionStartedAt": session["created_at"].isoformat(),
     }
+
+
+def record_activity(session_id: str | None) -> bool:
+    """Bump a session's idle clock in response to real user interaction.
+
+    Returns False when the session is gone, idle-timed-out, or has hit the
+    absolute session cap, so the caller can force a clean logout.
+    """
+    if not session_id:
+        # Access tokens issued before the session-id claim existed cannot
+        # be mapped to a session yet; the next refresh adds the claim.
+        return True
+
+    settings = get_settings()
+    max_age_cutoff = datetime.now(UTC) - timedelta(
+        hours=settings.max_session_hours
+    )
+
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE user_sessions
+                    SET last_activity_at = NOW()
+                    WHERE id = %s
+                      AND revoked_at IS NULL
+                      AND expires_at > NOW()
+                      AND created_at > %s
+                    """,
+                    (as_uuid(session_id), max_age_cutoff),
+                )
+                conn.commit()
+                return cur.rowcount > 0
+    except OperationalError as exc:
+        raise _db_unavailable(exc) from exc
 
 
 def logout(refresh_token: str | None) -> None:

@@ -6,6 +6,8 @@ import {
   Clock3,
   ReceiptText,
   TrendingUp,
+  UserCheck,
+  UserX,
   Users,
   Wallet,
 } from "lucide-react";
@@ -268,6 +270,28 @@ export default function DashboardPage({ title }) {
                 tone="blue"
                 delay={180}
                 hint="Expected for the month"
+              />
+            </div>
+
+            <p className="stat-group-label">Customers</p>
+            <div className="stats-grid stats-grid--dashboard">
+              <StatCard
+                label="Active"
+                count={summary.activeCustomers ?? 0}
+                icon={UserCheck}
+                tone="emerald"
+                delay={0}
+                hint="No overdue months"
+              />
+              <StatCard
+                label="In arrears"
+                count={summary.deactivatedCustomers ?? 0}
+                icon={UserX}
+                tone="rose"
+                delay={60}
+                hint={`${formatMoney(
+                  summary.deactivatedBalance || 0
+                )} arrears pending`}
               />
             </div>
           </div>

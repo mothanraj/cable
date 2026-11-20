@@ -2,6 +2,11 @@ from decimal import Decimal
 from typing import Any
 
 from app.config.database import get_connection
+from app.modules.customers.service import (
+    get_customer_arrears_with_cursor,
+    sync_customer_statuses_with_cursor,
+)
+from app.utils.errors import AppError
 
 BILLING_SUMMARY_SELECT = """
   cbs.billing_id AS id,
@@ -212,17 +217,21 @@ def generate_billing(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # A customer with an overdue month is deactivated and must not
+            # receive a new bill until the pending amount is paid.
+            sync_customer_statuses_with_cursor(cur)
+
             cur.execute(
                 f"""
                 SELECT
                   c.id,
+                  c.is_active,
                   p.package_name,
                   p.monthly_amount
                 FROM customers c
                 INNER JOIN packages p
                   ON p.id = c.package_id
                 WHERE c.id = %s
-                  AND c.is_active = TRUE
                   {ownership}
                 """,
                 values,
@@ -231,6 +240,34 @@ def generate_billing(
 
             if customer is None:
                 return None
+
+            # A customer with arrears is deactivated and must clear the
+            # pending amount before a new bill can be generated.
+            if not customer["is_active"]:
+                pending = get_customer_arrears_with_cursor(
+                    cur, customer_id
+                )
+                amount = pending["amount"] or 0
+
+                if amount > 0:
+                    raise AppError(
+                        code="CUSTOMER_IN_ARREARS",
+                        message=(
+                            f"Customer has ₹{amount:,.2f} in arrears. "
+                            "Collect the pending amount before "
+                            "generating a new bill."
+                        ),
+                        status_code=409,
+                    )
+
+                raise AppError(
+                    code="CUSTOMER_INACTIVE",
+                    message=(
+                        "Customer is deactivated. Reactivate the "
+                        "customer before generating a new bill."
+                    ),
+                    status_code=409,
+                )
 
             arrears, source_ids = _roll_forward_unpaid(
                 cur,
@@ -307,19 +344,21 @@ def generate_billing_bulk(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            sync_customer_statuses_with_cursor(cur)
+
             cur.execute(
                 f"""
                 SELECT
                   c.id,
                   c.customer_name,
                   c.stb_number,
+                  c.is_active,
                   p.package_name,
                   p.monthly_amount
                 FROM customers c
                 INNER JOIN packages p
                   ON p.id = c.package_id
                 WHERE c.id = ANY(%s)
-                  AND c.is_active = TRUE
                   {ownership}
                 """,
                 values,
@@ -352,20 +391,42 @@ def generate_billing_bulk(
                             ),
                         }
                     )
-                elif cid in already_billed:
-                    row = customers[cid]
+                    continue
+
+                row = customers[cid]
+
+                if cid in already_billed:
                     skipped.append(
                         {
                             "customerId": cid,
                             "customerName": row["customer_name"],
                             "stbNumber": row["stb_number"],
+                            "reason": "ALREADY_BILLED",
+                        }
+                    )
+                    continue
+
+                if not row["is_active"]:
+                    pending = get_customer_arrears_with_cursor(cur, cid)
+                    amount = float(pending["amount"] or 0)
+                    skipped.append(
+                        {
+                            "customerId": cid,
+                            "customerName": row["customer_name"],
+                            "stbNumber": row["stb_number"],
+                            "reason": (
+                                "ARREARS" if amount > 0 else "INACTIVE"
+                            ),
+                            "arrearsAmount": amount,
                         }
                     )
 
             to_insert = [
                 cid
                 for cid in unique_ids
-                if cid in customers and cid not in already_billed
+                if cid in customers
+                and customers[cid]["is_active"]
+                and cid not in already_billed
             ]
 
             for cid in to_insert:

@@ -25,6 +25,9 @@ def get_dashboard(
             status_code=400,
         )
 
+    from app.modules.customers import service as customer_service
+
+    customer_service.sync_customer_statuses()
     dashboard = dashboard_service.get_dashboard(
         user_id=user["id"],
         role=user["role"],

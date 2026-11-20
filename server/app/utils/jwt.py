@@ -11,7 +11,9 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def generate_access_token(user: dict[str, Any]) -> str:
+def generate_access_token(
+    user: dict[str, Any], session_id: str | None = None
+) -> str:
     settings = get_settings()
     payload = {
         "sub": str(user["id"]),
@@ -23,6 +25,8 @@ def generate_access_token(user: dict[str, Any]) -> str:
         + timedelta(minutes=settings.access_token_expires_minutes),
         "iat": _now(),
     }
+    if session_id:
+        payload["sid"] = str(session_id)
     return jwt.encode(
         payload,
         settings.jwt_access_secret,

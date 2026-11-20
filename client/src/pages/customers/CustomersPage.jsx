@@ -93,6 +93,9 @@ function SortableCustomerCard({
     transition,
   };
 
+  const arrearsAmount = Number(customer.overdue_amount || 0);
+  const inArrears = arrearsAmount > 0;
+
   return (
     <article
       ref={setNodeRef}
@@ -142,11 +145,16 @@ function SortableCustomerCard({
 
       <label
         className="card-checkbox"
-        title="Select customer"
+        title={
+          inArrears
+            ? "Customer is in arrears - pay arrears first"
+            : "Select customer"
+        }
       >
         <input
           type="checkbox"
           checked={selected}
+          disabled={inArrears}
           onChange={() => onToggleSelect?.(customer.id)}
           aria-label={`Select ${customer.customer_name}`}
         />
@@ -163,6 +171,22 @@ function SortableCustomerCard({
           </span>
           {customer.customer_name}
         </h2>
+        {inArrears && (
+          <span className="customer-deactivated-pill">
+            Arrears
+          </span>
+        )}
+        {inArrears && customer.overdue_month && (
+          <p className="customer-overdue-line">
+            Pending {normalizeDate(customer.overdue_month)} ·{" "}
+            {formatMoney(arrearsAmount)}
+          </p>
+        )}
+        {!inArrears && customer.is_active === false && (
+          <span className="customer-deactivated-pill">
+            Deactivated
+          </span>
+        )}
         {Number(customer.overpaid_amount || 0) > 0 && (
           <span className="customer-overpaid-pill">
             Overpaid ₹
@@ -247,15 +271,28 @@ function SortableCustomerCard({
           <Pencil size={15} aria-hidden="true" />
           Edit
         </button>
-        {bill ? (
+        {inArrears ? (
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => onCollect(customer, bill)}
+            onClick={() => onCollect(customer, null, "arrears")}
+          >
+            <IndianRupee size={15} aria-hidden="true" />
+            Pay arrears {formatMoney(arrearsAmount)}
+          </button>
+        ) : bill ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => onCollect(customer, bill, "bill")}
           >
             <IndianRupee size={15} aria-hidden="true" />
             Collect Payment
           </button>
+        ) : customer.is_active === false ? (
+          <p className="muted customer-deactivated-hint">
+            Pay the pending bill to reactivate
+          </p>
         ) : (
           <button
             type="button"
@@ -431,17 +468,19 @@ export default function CustomersPage() {
     );
   }, [filteredCustomers, placeFilter]);
 
-  const visibleCustomerIds = useMemo(
+  const selectableVisibleIds = useMemo(
     () =>
-      placeFilteredCustomers.map(
-        (customer) => customer.id
-      ),
+      placeFilteredCustomers
+        .filter(
+          (customer) => Number(customer.overdue_amount || 0) <= 0
+        )
+        .map((customer) => customer.id),
     [placeFilteredCustomers]
   );
 
   const allVisibleSelected =
-    visibleCustomerIds.length > 0 &&
-    visibleCustomerIds.every((id) =>
+    selectableVisibleIds.length > 0 &&
+    selectableVisibleIds.every((id) =>
       selectedIds.has(id)
     );
 
@@ -462,11 +501,11 @@ export default function CustomersPage() {
       const next = new Set(prev);
 
       if (allVisibleSelected) {
-        for (const id of visibleCustomerIds) {
+        for (const id of selectableVisibleIds) {
           next.delete(id);
         }
       } else {
-        for (const id of visibleCustomerIds) {
+        for (const id of selectableVisibleIds) {
           next.add(id);
         }
       }
@@ -556,13 +595,35 @@ export default function CustomersPage() {
         billingMonth: getCurrentBillingMonth(),
       });
       const generated = result.generated?.length ?? 0;
-      const skipped = result.skipped?.length ?? 0;
+      const skippedItems = result.skipped ?? [];
       const failed = result.failed ?? [];
+      const alreadyBilled = skippedItems.filter(
+        (item) => item.reason !== "ARREARS" && item.reason !== "INACTIVE"
+      ).length;
+      const arrearsSkipped = skippedItems.filter(
+        (item) => item.reason === "ARREARS"
+      ).length;
+      const inactiveSkipped = skippedItems.filter(
+        (item) => item.reason === "INACTIVE"
+      ).length;
 
       const parts = [
         `Generated ${generated} bill${generated === 1 ? "" : "s"}`,
-        `skipped ${skipped} already billed`,
       ];
+
+      if (alreadyBilled > 0) {
+        parts.push(`skipped ${alreadyBilled} already billed`);
+      }
+
+      if (arrearsSkipped > 0) {
+        parts.push(
+          `skipped ${arrearsSkipped} in arrears (pay arrears first)`
+        );
+      }
+
+      if (inactiveSkipped > 0) {
+        parts.push(`skipped ${inactiveSkipped} inactive`);
+      }
 
       const overpaidItems = (result.generated ?? []).filter(
         (item) => Number(item?.previousOverpaid?.amount || 0) > 0
@@ -713,10 +774,11 @@ export default function CustomersPage() {
                       setEditingCustomer(item);
                       setFormOpen(true);
                     }}
-                    onCollect={(item, billRow) =>
+                    onCollect={(item, billRow, mode) =>
                       setPaymentTarget({
                         customer: item,
                         bill: billRow,
+                        mode: mode || "bill",
                       })
                     }
                     onGenerateBill={handleGenerateBill}
@@ -841,6 +903,7 @@ export default function CustomersPage() {
             <input
               type="checkbox"
               checked={allVisibleSelected}
+              disabled={selectableVisibleIds.length === 0}
               onChange={toggleSelectAllVisible}
               aria-label="Select all visible customers"
             />
@@ -931,16 +994,23 @@ export default function CustomersPage() {
         />
       )}
 
-      <CollectPaymentModal
-        open={Boolean(paymentTarget)}
-        customer={paymentTarget?.customer}
-        bill={paymentTarget?.bill}
-        onClose={() => setPaymentTarget(null)}
-        onSuccess={async () => {
-          setSuccess("Payment recorded.");
-          await loadData();
-        }}
-      />
+      {paymentTarget && (
+        <CollectPaymentModal
+          open
+          mode={paymentTarget.mode}
+          customer={paymentTarget.customer}
+          bill={paymentTarget.bill}
+          onClose={() => setPaymentTarget(null)}
+          onSuccess={async () => {
+            setSuccess(
+              paymentTarget.mode === "arrears"
+                ? "Arrears payment recorded."
+                : "Payment recorded."
+            );
+            await loadData();
+          }}
+        />
+      )}
     </section>
   );
 }

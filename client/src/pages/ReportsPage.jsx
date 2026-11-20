@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -6,10 +6,21 @@ import {
   CircleDashed,
   FileSpreadsheet,
   FileText,
+  IndianRupee,
+  Search,
   TrendingUp,
+  UserCheck,
+  UserX,
+  Users,
   XCircle,
 } from "lucide-react";
-import { getBillingReport } from "../api/reports";
+import {
+  getBillingReport,
+  getCustomersReport,
+} from "../api/reports";
+import { getPackages } from "../api/packages";
+import { getPlaces } from "../api/places";
+import CollectPaymentModal from "../components/CollectPaymentModal";
 import { useAuth } from "../context/AuthContext";
 import {
   formatMoney,
@@ -19,6 +30,8 @@ import {
   statusClass,
 } from "../utils/format";
 import {
+  downloadCustomersExcel,
+  downloadCustomersPdf,
   downloadReportExcel,
   downloadStbPdf,
 } from "../utils/reportDownloads";
@@ -218,6 +231,105 @@ function ReportTable({
   );
 }
 
+function CustomerReportTable({
+  customers,
+  emptyText,
+  onCollect,
+}) {
+  const columnCount = 14;
+
+  return (
+    <div className="table-wrap">
+      <table className="data-table data-table--wide">
+        <thead>
+          <tr>
+            <th>S.No</th>
+            <th>Customer</th>
+            <th>STB</th>
+            <th>Phone</th>
+            <th>Place</th>
+            <th>Package</th>
+            <th className="col-num">Monthly amount</th>
+            <th>Assigned</th>
+            <th>Overdue month</th>
+            <th className="col-num">Balance</th>
+            <th>Remarks</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.length === 0 && (
+            <tr>
+              <td colSpan={columnCount} className="empty-state">
+                {emptyText}
+              </td>
+            </tr>
+          )}
+          {customers.map((row, index) => (
+            <tr key={row.id}>
+              <td className="serial-cell">{index + 1}</td>
+              <td>{row.customer_name}</td>
+              <td>{row.stb_number}</td>
+              <td>{row.phone || "-"}</td>
+              <td>
+                {row.place ||
+                  row.place_name ||
+                  "-"}
+              </td>
+              <td>{row.package_name || "-"}</td>
+              <td className="col-num">
+                {formatMoney(row.package_monthly_amount)}
+              </td>
+              <td>
+                {row.assigned_user_name ||
+                  row.assigned_username ||
+                  "-"}
+              </td>
+              <td>{normalizeDate(row.overdue_month)}</td>
+              <td className="col-num">
+                {formatMoney(row.outstanding_balance)}
+              </td>
+              <td>{row.remarks || "-"}</td>
+              <td>
+                {row.is_active ? (
+                  <span className="status-pill status-paid">
+                    Active
+                  </span>
+                ) : Number(row.overdue_amount || 0) > 0 ? (
+                  <span className="status-pill status-unpaid">
+                    In arrears
+                  </span>
+                ) : (
+                  <span className="status-pill status-unpaid">
+                    Inactive
+                  </span>
+                )}
+              </td>
+              <td>{normalizeDate(row.created_at)}</td>
+              <td>
+                {!row.is_active &&
+                  Number(row.overdue_amount || 0) > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => onCollect?.(row)}
+                    >
+                      <IndianRupee size={14} aria-hidden="true" />
+                      Pay arrears{" "}
+                      {formatMoney(row.overdue_amount)}
+                    </button>
+                  )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ReportCard({ report, records, onOpen, delay = 0 }) {
   const stats = summarize(records);
   const Icon = report.icon;
@@ -295,11 +407,29 @@ export default function ReportsPage() {
   const [placeFilter, setPlaceFilter] = useState("all");
   const [packageFilter, setPackageFilter] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState(null);
+  const [showAllCustomers, setShowAllCustomers] = useState(false);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(null);
   const [downloadError, setDownloadError] = useState("");
+
+  // All-customers directory state (admin only)
+  const [allCustomers, setAllCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] =
+    useState(true);
+  const [customerError, setCustomerError] = useState("");
+  const [customerSearch, setCustomerSearch] =
+    useState("");
+  const [customerPlace, setCustomerPlace] =
+    useState("all");
+  const [customerPackage, setCustomerPackage] =
+    useState("all");
+  const [customerStatus, setCustomerStatus] =
+    useState("all");
+  const [placeChoices, setPlaceChoices] = useState([]);
+  const [packageChoices, setPackageChoices] = useState([]);
+  const [paymentTarget, setPaymentTarget] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -341,6 +471,50 @@ export default function ReportsPage() {
       cancelled = true;
     };
   }, [isAdmin, from, to, billingMonth]);
+
+  const loadCustomers = useCallback(async () => {
+    if (!isAdmin) return;
+
+    try {
+      setCustomersLoading(true);
+      setCustomerError("");
+
+      const [customers, places, packages] =
+        await Promise.all([
+          getCustomersReport({ includeInactive: true }),
+          getPlaces({ includeInactive: true }),
+          getPackages({ includeInactive: true }),
+        ]);
+
+      setAllCustomers(customers);
+      setPlaceChoices(places);
+      setPackageChoices(packages);
+    } catch (err) {
+      setCustomerError(
+        err.response?.data?.error?.message ||
+          "Unable to load customers."
+      );
+    } finally {
+      setCustomersLoading(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
+
+  // Debounce the search box so large customer lists do not re-filter on
+  // every keystroke.
+  const [debouncedCustomerSearch, setDebouncedCustomerSearch] =
+    useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCustomerSearch(customerSearch);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [customerSearch]);
 
   const summary = report?.summary;
 
@@ -441,6 +615,99 @@ export default function ReportsPage() {
     [records]
   );
 
+  const filteredCustomers = useMemo(() => {
+    const term = debouncedCustomerSearch.trim().toLowerCase();
+
+    return allCustomers.filter((row) => {
+      if (term) {
+        const haystack = [
+          row.customer_name,
+          row.stb_number,
+          row.phone,
+          row.place,
+          row.place_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!haystack.includes(term)) return false;
+      }
+
+      if (
+        customerPlace !== "all" &&
+        row.place_id !== customerPlace
+      ) {
+        return false;
+      }
+
+      if (
+        customerPackage !== "all" &&
+        row.package_id !== customerPackage
+      ) {
+        return false;
+      }
+
+      if (customerStatus === "active" && !row.is_active) {
+        return false;
+      }
+
+      if (customerStatus === "inactive" && row.is_active) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    allCustomers,
+    debouncedCustomerSearch,
+    customerPlace,
+    customerPackage,
+    customerStatus,
+  ]);
+
+  const customerCounts = useMemo(() => {
+    const places = new Set();
+    let active = 0;
+    let inactive = 0;
+
+    for (const row of allCustomers) {
+      if (row.is_active) active += 1;
+      else inactive += 1;
+      if (row.place_id) places.add(row.place_id);
+    }
+
+    return { active, inactive, places: places.size };
+  }, [allCustomers]);
+
+  const deactivatedBalance = useMemo(
+    () =>
+      allCustomers.reduce(
+        (sum, row) =>
+          row.is_active
+            ? sum
+            : sum + Number(row.overdue_amount || 0),
+        0
+      ),
+    [allCustomers]
+  );
+
+  function handleCollectFromReport(row) {
+    setPaymentTarget({
+      customer: row,
+      bill: null,
+      mode: "arrears",
+    });
+  }
+
+  function openCustomersWithStatus(status) {
+    setDownloadError("");
+    setCustomerError("");
+    setSelectedStatus(null);
+    setCustomerStatus(status);
+    setShowAllCustomers(true);
+  }
+
   const activeReport = STATUS_REPORTS.find(
     (item) => item.status === selectedStatus
   );
@@ -517,6 +784,45 @@ export default function ReportsPage() {
       }
     } catch {
       setDownloadError(
+        "Unable to generate the download. Please try again."
+      );
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  async function handleCustomerDownload(format) {
+    if (
+      customersLoading ||
+      filteredCustomers.length === 0 ||
+      exporting
+    ) {
+      return;
+    }
+
+    setCustomerError("");
+    setExporting(format);
+
+    try {
+      if (format === "excel") {
+        await downloadCustomersExcel({
+          customers: filteredCustomers,
+          fileName: "all-customers.xlsx",
+        });
+      } else {
+        const downloaded = await downloadCustomersPdf({
+          customers: filteredCustomers,
+          fileName: "all-customers.pdf",
+        });
+
+        if (!downloaded) {
+          setCustomerError(
+            "No customers found for this report."
+          );
+        }
+      }
+    } catch {
+      setCustomerError(
         "Unable to generate the download. Please try again."
       );
     } finally {
@@ -634,13 +940,15 @@ export default function ReportsPage() {
     <section className="page page--reports">
       <div className="page-header">
         <div>
-          {selectedStatus && (
+          {(selectedStatus || showAllCustomers) && (
             <button
               type="button"
               className="btn btn-secondary report-back"
               onClick={() => {
                 setDownloadError("");
+                setCustomerError("");
                 setSelectedStatus(null);
+                setShowAllCustomers(false);
               }}
             >
               <ArrowLeft size={15} aria-hidden="true" />
@@ -648,26 +956,42 @@ export default function ReportsPage() {
             </button>
           )}
           <h1>
-            {activeReport
-              ? activeReport.title
-              : "Reports"}
+            {showAllCustomers
+              ? customerStatus === "active"
+                ? "Active Customers"
+                : customerStatus === "inactive"
+                  ? "Deactivated Customers"
+                  : "All Customers"
+              : activeReport
+                ? activeReport.title
+                : "Reports"}
           </h1>
           <p>
-            {activeReport
-              ? "Filtered customer list and collection totals."
-              : "Choose a report to open its customer list."}
+            {showAllCustomers
+              ? customerStatus === "inactive"
+                ? "STBs with unpaid past months and their pending balance."
+                : "Every customer with full details and filters."
+              : activeReport
+                ? "Filtered customer list and collection totals."
+                : "Choose a report to open its customer list."}
           </p>
         </div>
 
-        {selectedStatus && (
+        {(selectedStatus || showAllCustomers) && (
           <div className="report-download-actions">
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleDownload("excel")}
+              onClick={() =>
+                showAllCustomers
+                  ? handleCustomerDownload("excel")
+                  : handleDownload("excel")
+              }
               disabled={
-                loading ||
-                !detailRecords.length ||
+                (showAllCustomers
+                  ? customersLoading ||
+                    !filteredCustomers.length
+                  : loading || !detailRecords.length) ||
                 exporting !== null
               }
             >
@@ -679,10 +1003,16 @@ export default function ReportsPage() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => handleDownload("pdf")}
+              onClick={() =>
+                showAllCustomers
+                  ? handleCustomerDownload("pdf")
+                  : handleDownload("pdf")
+              }
               disabled={
-                loading ||
-                !detailRecords.length ||
+                (showAllCustomers
+                  ? customersLoading ||
+                    !filteredCustomers.length
+                  : loading || !detailRecords.length) ||
                 exporting !== null
               }
             >
@@ -699,6 +1029,7 @@ export default function ReportsPage() {
         <p className="error-message">{downloadError}</p>
       )}
 
+      {!showAllCustomers && (
       <div className="toolbar report-filters">
         <label className="field">
           <span>From</span>
@@ -791,19 +1122,22 @@ export default function ReportsPage() {
           </button>
         </div>
       </div>
+      )}
 
-      <p className="muted report-hint">
-        Bills for the selected months are included, plus any
-        older bill paid inside the range. Payments are counted
-        only inside the range.
-      </p>
+      {!showAllCustomers && (
+        <p className="muted report-hint">
+          Bills for the selected months are included, plus any
+          older bill paid inside the range. Payments are counted
+          only inside the range.
+        </p>
+      )}
 
       {error && <p className="error-message">{error}</p>}
       {loading && <p className="muted">Loading report...</p>}
 
-      {!loading && !error && report && !selectedStatus && (
+      {!selectedStatus && !showAllCustomers && (
         <div className="report-grid">
-          {STATUS_REPORTS.map((item, index) => (
+          {!loading && !error && report && STATUS_REPORTS.map((item, index) => (
             <ReportCard
               key={item.status}
               report={item}
@@ -811,10 +1145,159 @@ export default function ReportsPage() {
               delay={index * 70}
               onOpen={() => {
                 setDownloadError("");
+                setCustomerError("");
+                setShowAllCustomers(false);
                 setSelectedStatus(item.status);
               }}
             />
           ))}
+
+          <article
+            className="report-card report-card--all"
+            style={{
+              "--delay": `${STATUS_REPORTS.length * 70}ms`,
+            }}
+          >
+            <div className="report-card-header">
+              <div className="report-card-heading">
+                <span
+                  className="report-card-icon"
+                  aria-hidden="true"
+                >
+                  <Users size={19} strokeWidth={2} />
+                </span>
+                <h2>All Customers</h2>
+              </div>
+              <span>{allCustomers.length}</span>
+            </div>
+
+            <div className="report-card-body">
+              <p>
+                Every customer with full details. Search by STB
+                or name, and filter by place, package or status.
+              </p>
+
+              <dl className="report-card-amounts">
+                <div>
+                  <dt>Active</dt>
+                  <dd>{customerCounts.active}</dd>
+                </div>
+                <div>
+                  <dt>Inactive</dt>
+                  <dd>{customerCounts.inactive}</dd>
+                </div>
+                <div>
+                  <dt>Places</dt>
+                  <dd>{customerCounts.places}</dd>
+                </div>
+              </dl>
+
+              <button
+                type="button"
+                className="report-card-link"
+                onClick={() => {
+                  setDownloadError("");
+                  setCustomerError("");
+                  setSelectedStatus(null);
+                  setCustomerStatus("all");
+                  setShowAllCustomers(true);
+                }}
+              >
+                Open report
+                <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            </div>
+          </article>
+
+          <article
+            className="report-card report-card--active"
+            style={{
+              "--delay": `${(STATUS_REPORTS.length + 1) * 70}ms`,
+            }}
+          >
+            <div className="report-card-header">
+              <div className="report-card-heading">
+                <span
+                  className="report-card-icon"
+                  aria-hidden="true"
+                >
+                  <UserCheck size={19} strokeWidth={2} />
+                </span>
+                <h2>Active Customers</h2>
+              </div>
+              <span>{customerCounts.active}</span>
+            </div>
+
+            <div className="report-card-body">
+              <p>
+                No overdue months. New bills can be generated for
+                these customers.
+              </p>
+
+              <dl className="report-card-amounts">
+                <div>
+                  <dt>Total customers</dt>
+                  <dd>{allCustomers.length}</dd>
+                </div>
+              </dl>
+
+              <button
+                type="button"
+                className="report-card-link"
+                onClick={() =>
+                  openCustomersWithStatus("active")
+                }
+              >
+                Open report
+                <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            </div>
+          </article>
+
+          <article
+            className="report-card report-card--deactivated"
+            style={{
+              "--delay": `${(STATUS_REPORTS.length + 2) * 70}ms`,
+            }}
+          >
+            <div className="report-card-header">
+              <div className="report-card-heading">
+                <span
+                  className="report-card-icon"
+                  aria-hidden="true"
+                >
+                  <UserX size={19} strokeWidth={2} />
+                </span>
+                <h2>Deactivated Customers</h2>
+              </div>
+              <span>{customerCounts.inactive}</span>
+            </div>
+
+            <div className="report-card-body">
+              <p>
+                STBs with a past month still unpaid. No new bill is
+                generated until the pending amount is paid.
+              </p>
+
+              <dl className="report-card-amounts">
+                <div>
+                  <dt>Overdue amount</dt>
+                  <dd>{formatMoney(deactivatedBalance)}</dd>
+                </div>
+              </dl>
+
+              <button
+                type="button"
+                className="report-card-link"
+                onClick={() =>
+                  openCustomersWithStatus("inactive")
+                }
+              >
+                Open report
+                <ArrowRight size={15} aria-hidden="true" />
+              </button>
+            </div>
+          </article>
         </div>
       )}
 
@@ -869,6 +1352,119 @@ export default function ReportsPage() {
             </div>
           </>
         )}
+
+      {showAllCustomers && (
+      <div className="panel customer-report-panel">
+        <div className="panel-header">
+          <h2>All Customers</h2>
+          <span className="muted">
+            {filteredCustomers.length} of {allCustomers.length}{" "}
+            customers
+          </span>
+        </div>
+
+        <div className="toolbar report-filters">
+          <label className="field search-field">
+            <span>STB / Name</span>
+            <div className="input-with-icon">
+              <Search size={17} aria-hidden="true" />
+              <input
+                type="search"
+                className="search-input"
+                placeholder="Search STB, name, phone or place..."
+                value={customerSearch}
+                onChange={(event) =>
+                  setCustomerSearch(event.target.value)
+                }
+              />
+            </div>
+          </label>
+
+          <label className="field">
+            <span>Place</span>
+            <select
+              className="select"
+              value={customerPlace}
+              onChange={(event) =>
+                setCustomerPlace(event.target.value)
+              }
+            >
+              <option value="all">All places</option>
+              {placeChoices.map((place) => (
+                <option
+                  key={place.id}
+                  value={place.id}
+                >
+                  {place.place_name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Package</span>
+            <select
+              className="select"
+              value={customerPackage}
+              onChange={(event) =>
+                setCustomerPackage(event.target.value)
+              }
+            >
+              <option value="all">All packages</option>
+              {packageChoices.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.package_name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Status</span>
+            <select
+              className="select"
+              value={customerStatus}
+              onChange={(event) =>
+                setCustomerStatus(event.target.value)
+              }
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </label>
+
+        </div>
+
+        {customerError && (
+          <p className="error-message">{customerError}</p>
+        )}
+        {customersLoading && (
+          <p className="muted">Loading customers...</p>
+        )}
+        {!customersLoading && (
+          <CustomerReportTable
+            customers={filteredCustomers}
+            emptyText="No customers match the selected filters."
+            onCollect={handleCollectFromReport}
+          />
+        )}
+      </div>
+      )}
+
+      {paymentTarget && (
+        <CollectPaymentModal
+          open
+          mode={paymentTarget.mode || "bill"}
+          customer={paymentTarget.customer}
+          bill={paymentTarget.bill}
+          onClose={() => setPaymentTarget(null)}
+          onSuccess={async () => {
+            setPaymentTarget(null);
+            await loadCustomers();
+          }}
+        />
+      )}
     </section>
   );
 }

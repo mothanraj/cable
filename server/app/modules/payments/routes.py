@@ -7,7 +7,11 @@ from app.middleware.auth import CurrentUser
 from app.modules.payments import service as payment_service
 from app.utils.errors import AppError
 from app.utils.responses import success_response
-from app.utils.serialize import serialize_row, serialize_rows
+from app.utils.serialize import (
+    serialize_row,
+    serialize_rows,
+    serialize_value,
+)
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -18,6 +22,13 @@ class CreatePaymentRequest(BaseModel):
     billingId: str
     paymentDate: str
     collectedAmount: float = Field(gt=0)
+    remarks: str | None = None
+
+
+class PayArrearsRequest(BaseModel):
+    customerId: str
+    amount: float = Field(gt=0)
+    paymentDate: str
     remarks: str | None = None
 
 
@@ -82,5 +93,45 @@ def create_payment(user: CurrentUser, body: CreatePaymentRequest):
 
     return success_response(
         {"payment": serialize_row(payment)},
+        status_code=201,
+    )
+
+
+@router.post("/arrears")
+def pay_arrears(user: CurrentUser, body: PayArrearsRequest):
+    if not PAYMENT_DATE_RE.match(body.paymentDate):
+        raise AppError(
+            code="INVALID_REQUEST",
+            message="A valid payment date is required.",
+            status_code=400,
+        )
+
+    result = payment_service.pay_arrears(
+        customer_id=body.customerId,
+        collected_amount=body.amount,
+        payment_date=body.paymentDate,
+        remarks=body.remarks,
+        user_id=user["id"],
+        role=user["role"],
+    )
+
+    if result is None:
+        raise AppError(
+            code="CUSTOMER_NOT_FOUND",
+            message=(
+                "Customer not found or you do not have permission."
+            ),
+            status_code=404,
+        )
+
+    return success_response(
+        {
+            "payments": serialize_rows(result["payments"]),
+            "arrearsPaid": serialize_value(result["arrearsPaid"]),
+            "remainingArrears": serialize_value(
+                result["remainingArrears"]
+            ),
+            "reactivated": result["reactivated"],
+        },
         status_code=201,
     )

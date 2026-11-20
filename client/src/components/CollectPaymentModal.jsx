@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { createPayment } from "../api/payments";
+import {
+  createPayment,
+  payArrears,
+} from "../api/payments";
 import {
   formatMoney,
   getToday,
+  normalizeDate,
 } from "../utils/format";
 import Modal from "./Modal";
 
@@ -10,16 +14,33 @@ export default function CollectPaymentModal({
   open,
   bill,
   customer,
+  mode = "bill",
   onClose,
   onSuccess,
 }) {
-  const [collectedAmount, setCollectedAmount] = useState("");
+  const isArrears = mode === "arrears";
+  const arrearsAmount = Number(customer?.overdue_amount || 0);
+
+  const [collectedAmount, setCollectedAmount] = useState(
+    isArrears && arrearsAmount > 0
+      ? String(arrearsAmount)
+      : ""
+  );
   const [paymentDate, setPaymentDate] = useState(getToday());
   const [remarks, setRemarks] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  if (!open || !bill || !customer) return null;
+  if (!open || !customer || (!isArrears && !bill)) {
+    return null;
+  }
+
+  const remainingAfter = isArrears
+    ? Math.max(
+        arrearsAmount - Number(collectedAmount || 0),
+        0
+      )
+    : 0;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -27,12 +48,22 @@ export default function CollectPaymentModal({
     setError("");
 
     try {
-      await createPayment({
-        billingId: bill.billing_id || bill.id,
-        paymentDate,
-        collectedAmount: Number(collectedAmount),
-        remarks: remarks.trim() || null,
-      });
+      if (isArrears) {
+        await payArrears({
+          customerId: customer.id,
+          amount: Number(collectedAmount),
+          paymentDate,
+          remarks: remarks.trim() || null,
+        });
+      } else {
+        await createPayment({
+          billingId: bill.billing_id || bill.id,
+          paymentDate,
+          collectedAmount: Number(collectedAmount),
+          remarks: remarks.trim() || null,
+        });
+      }
+
       onSuccess?.();
       onClose();
       setCollectedAmount("");
@@ -50,7 +81,11 @@ export default function CollectPaymentModal({
 
   return (
     <Modal
-      title={`Collect payment for ${customer.customer_name}`}
+      title={
+        isArrears
+          ? `Pay arrears for ${customer.customer_name}`
+          : `Collect payment for ${customer.customer_name}`
+      }
       onClose={onClose}
       footer={
         <>
@@ -77,28 +112,50 @@ export default function CollectPaymentModal({
         className="form-grid"
         onSubmit={handleSubmit}
       >
-        <div className="summary-box">
-          <div>
-            <span>Monthly bill</span>
-            <strong>{formatMoney(bill.monthly_amount)}</strong>
+        {isArrears ? (
+          <div className="summary-box">
+            <div>
+              <span>Total arrears</span>
+              <strong>{formatMoney(arrearsAmount)}</strong>
+            </div>
+            <div>
+              <span>Oldest pending</span>
+              <strong>
+                {normalizeDate(customer.overdue_month)}
+              </strong>
+            </div>
+            <div>
+              <span>Remaining after payment</span>
+              <strong>{formatMoney(remainingAfter)}</strong>
+            </div>
           </div>
-          <div>
-            <span>Already paid</span>
-            <strong>{formatMoney(bill.total_paid)}</strong>
+        ) : (
+          <div className="summary-box">
+            <div>
+              <span>Monthly bill</span>
+              <strong>{formatMoney(bill.monthly_amount)}</strong>
+            </div>
+            <div>
+              <span>Already paid</span>
+              <strong>{formatMoney(bill.total_paid)}</strong>
+            </div>
+            <div>
+              <span>Current balance</span>
+              <strong>{formatMoney(bill.balance_amount)}</strong>
+            </div>
           </div>
-          <div>
-            <span>Current balance</span>
-            <strong>{formatMoney(bill.balance_amount)}</strong>
-          </div>
-        </div>
+        )}
 
         {error && <p className="form-error">{error}</p>}
 
         <label className="field">
-          <span>Amount collected</span>
+          <span>
+            {isArrears ? "Arrears amount collected" : "Amount collected"}
+          </span>
           <input
             type="number"
             min="0.01"
+            max={isArrears ? arrearsAmount : undefined}
             step="0.01"
             className="input"
             value={collectedAmount}

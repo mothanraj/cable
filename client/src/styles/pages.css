@@ -248,6 +248,16 @@
   font-size: 0.74rem;
 }
 
+.session-notice {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--violet-soft);
+  color: var(--violet-ink);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 /* ============================================================
    Dashboard
    ============================================================ */
@@ -868,6 +878,35 @@
   text-transform: uppercase;
 }
 
+.customer-deactivated-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-bottom: 7px;
+  padding: 3px 10px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid rgba(225, 29, 72, 0.2);
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.customer-deactivated-hint {
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.customer-overdue-line {
+  margin: 0 0 6px;
+  color: var(--danger);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
 .customer-overpaid-pill {
   display: inline-flex;
   align-items: center;
@@ -1030,6 +1069,23 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 18px;
+}
+
+.customer-report-panel {
+  margin-top: 28px;
+}
+
+.report-card--all {
+  background: var(--grad-brand-soft);
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+.report-card--active {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.report-card--deactivated {
+  border-color: rgba(225, 29, 72, 0.3);
 }
 
 .report-card {

@@ -60,10 +60,31 @@ def get_customers(
     user: CurrentUser,
     search: str | None = Query(default=None),
 ):
+    # Keep the list in step with the arrears rule so a customer with a
+    # pending past-month bill is always shown as deactivated.
+    customer_service.sync_customer_statuses()
     customers = customer_service.get_customers(
         user_id=user["id"],
         role=user["role"],
         search=search,
+    )
+    return success_response({"customers": serialize_rows(customers)})
+
+
+@router.get("/report")
+def get_customers_report(
+    _admin: AdminUser,
+    search: str | None = Query(default=None),
+    placeId: str | None = Query(default=None),
+    packageId: str | None = Query(default=None),
+    includeInactive: bool = Query(default=True),
+):
+    customer_service.sync_customer_statuses()
+    customers = customer_service.get_customers_report(
+        search=search,
+        place_id=placeId,
+        package_id=packageId,
+        include_inactive=includeInactive,
     )
     return success_response({"customers": serialize_rows(customers)})
 

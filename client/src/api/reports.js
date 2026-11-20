@@ -26,3 +26,26 @@ export async function getBillingReport(filters = {}) {
 
   return response.data.data.billing;
 }
+
+export async function getCustomersReport(filters = {}) {
+  const params = {};
+
+  if (filters.search) {
+    params.search = filters.search;
+  }
+  if (filters.placeId && filters.placeId !== "all") {
+    params.placeId = filters.placeId;
+  }
+  if (filters.packageId && filters.packageId !== "all") {
+    params.packageId = filters.packageId;
+  }
+  if (filters.includeInactive === false) {
+    params.includeInactive = false;
+  }
+
+  const response = await apiClient.get("/customers/report", {
+    params,
+  });
+
+  return response.data.data.customers;
+}

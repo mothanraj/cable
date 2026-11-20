@@ -19,6 +19,22 @@ export async function createPayment({
   return response.data.data.payment;
 }
 
+export async function payArrears({
+  customerId,
+  amount,
+  paymentDate,
+  remarks,
+}) {
+  const response = await apiClient.post("/payments/arrears", {
+    customerId,
+    amount,
+    paymentDate,
+    remarks,
+  });
+
+  return response.data.data;
+}
+
 export async function getPayments(billingId) {
   const response = await apiClient.get(
     "/payments",

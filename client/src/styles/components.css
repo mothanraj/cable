@@ -205,6 +205,14 @@
   color: var(--ink-faint);
 }
 
+.input.input-readonly {
+  display: flex;
+  align-items: center;
+  color: var(--ink-muted);
+  background: var(--surface-3);
+  cursor: default;
+}
+
 .password-field {
   position: relative;
 }
