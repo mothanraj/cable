@@ -22,15 +22,18 @@ import {
   updateCustomer,
 } from "../../api/customers";
 import { getPayments } from "../../api/payments";
+import AdjustBillsModal from "../../components/AdjustBillsModal";
 import CollectPaymentModal from "../../components/CollectPaymentModal";
+import CollectorFilter from "../../components/CollectorFilter";
 import CustomerFormModal from "../../components/CustomerFormModal";
 import { useAuth } from "../../context/AuthContext";
+import { useDataRefresh } from "../../context/DataRefreshContext";
 import {
+  combinedStatus,
   formatMoney,
   getCurrentBillingMonth,
   getToday,
   normalizeDate,
-  statusClass,
 } from "../../utils/format";
 import { getInitials } from "../../utils/names";
 
@@ -66,10 +69,13 @@ function groupCustomersByPlace(list) {
 function SortableCustomerCard({
   customer,
   bill,
-  latestPayment,
+  paymentDates = [],
+  billedThisMonth = false,
   serial,
   onEdit,
   onCollect,
+  onAdjust,
+  canAdjust = false,
   onGenerateBill,
   onMoveUp,
   onMoveDown,
@@ -95,6 +101,7 @@ function SortableCustomerCard({
 
   const arrearsAmount = Number(customer.overdue_amount || 0);
   const inArrears = arrearsAmount > 0;
+  const status = combinedStatus(bill, customer.is_active);
 
   return (
     <article
@@ -143,18 +150,10 @@ function SortableCustomerCard({
         </button>
       )}
 
-      <label
-        className="card-checkbox"
-        title={
-          inArrears
-            ? "Customer is in arrears - pay arrears first"
-            : "Select customer"
-        }
-      >
+      <label className="card-checkbox" title="Select customer">
         <input
           type="checkbox"
           checked={selected}
-          disabled={inArrears}
           onChange={() => onToggleSelect?.(customer.id)}
           aria-label={`Select ${customer.customer_name}`}
         />
@@ -210,56 +209,47 @@ function SortableCustomerCard({
       </div>
 
       <div className="customer-billing">
-        {bill ? (
-          <>
-            <div className="billing-line">
-              <span>Package</span>
-              <strong>{formatMoney(bill.monthly_amount)}</strong>
-            </div>
-            <div className="billing-line">
-              <span>Arrears</span>
-              <strong>
-                {formatMoney(Number(bill.arrears_amount || 0))}
-              </strong>
-            </div>
-            <div className="billing-line">
-              <span>Due</span>
-              <strong>
-                {formatMoney(
-                  Number(
-                    bill.due_amount ??
-                      Number(bill.monthly_amount || 0) +
-                        Number(bill.arrears_amount || 0)
-                  )
-                )}
-              </strong>
-            </div>
-            <div className="billing-line">
-              <span>Paid</span>
-              <strong>{formatMoney(bill.total_paid)}</strong>
-            </div>
-            <div className="billing-line">
-              <span>Balance</span>
-              <strong>{formatMoney(bill.balance_amount)}</strong>
-            </div>
-            <div className="billing-line">
-              <span>Status</span>
-              <span className={statusClass(bill.payment_status)}>
-                {bill.payment_status}
-              </span>
-            </div>
-            <div className="billing-line">
-              <span>Latest payment</span>
-              <strong>
-                {latestPayment
-                  ? normalizeDate(latestPayment.payment_date)
-                  : "-"}
-              </strong>
-            </div>
-          </>
-        ) : (
-          <p className="muted">No billing for this month.</p>
+        <div className="billing-line">
+          <span>Package</span>
+          <strong>
+            {formatMoney(customer.package_monthly_amount)}
+          </strong>
+        </div>
+        <div className="billing-line">
+          <span>Pending</span>
+          <strong>
+            {formatMoney(
+              bill?.balance_amount ?? customer.overdue_amount ?? 0
+            )}
+          </strong>
+        </div>
+        {Number(bill?.arrears_amount || 0) > 0 && (
+          <p className="billing-note">
+            includes {formatMoney(bill.arrears_amount)} carried
+            from an earlier month
+          </p>
         )}
+        <div className="billing-line">
+          <span>Paid</span>
+          <strong>{formatMoney(bill?.total_paid ?? 0)}</strong>
+        </div>
+        <div className="billing-line">
+          <span>Status</span>
+          <span className={status.className}>{status.text}</span>
+        </div>
+        <div className="billing-line billing-line--dates">
+          <span>Payment dates</span>
+          <strong>
+            {paymentDates.length > 0
+              ? paymentDates
+                  .map(
+                    (payment) =>
+                      `${normalizeDate(payment.payment_date)} (${formatMoney(payment.collected_amount)})`
+                  )
+                  .join(", ")
+              : "-"}
+          </strong>
+        </div>
       </div>
 
       <div className="customer-actions">
@@ -271,16 +261,16 @@ function SortableCustomerCard({
           <Pencil size={15} aria-hidden="true" />
           Edit
         </button>
-        {inArrears ? (
+        {canAdjust && bill && (
           <button
             type="button"
-            className="btn btn-primary"
-            onClick={() => onCollect(customer, null, "arrears")}
+            className="btn btn-secondary"
+            onClick={() => onAdjust?.([customer])}
           >
-            <IndianRupee size={15} aria-hidden="true" />
-            Pay arrears {formatMoney(arrearsAmount)}
+            Edit due / overpaid
           </button>
-        ) : bill ? (
+        )}
+        {billedThisMonth && bill ? (
           <button
             type="button"
             className="btn btn-primary"
@@ -289,10 +279,6 @@ function SortableCustomerCard({
             <IndianRupee size={15} aria-hidden="true" />
             Collect Payment
           </button>
-        ) : customer.is_active === false ? (
-          <p className="muted customer-deactivated-hint">
-            Pay the pending bill to reactivate
-          </p>
         ) : (
           <button
             type="button"
@@ -310,15 +296,15 @@ function SortableCustomerCard({
 
 export default function CustomersPage() {
   const { user } = useAuth();
+  const { version, notifyDataChanged } = useDataRefresh();
   const isAdmin = user?.role === "ADMIN";
   const [customers, setCustomers] = useState([]);
   const [billing, setBilling] = useState([]);
-  const [paymentsByBilling, setPaymentsByBilling] = useState(
-    new Map()
-  );
+  const [payments, setPayments] = useState([]);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState(FILTERS.ALL);
   const [placeFilter, setPlaceFilter] = useState("all");
+  const [collectorUserId, setCollectorUserId] = useState("");
   const [selectedDate, setSelectedDate] = useState(getToday());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -327,6 +313,7 @@ export default function CustomersPage() {
   const [formMode, setFormMode] = useState("create");
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
+  const [adjustRows, setAdjustRows] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
 
@@ -343,22 +330,14 @@ export default function CustomersPage() {
 
       const [customerData, billingData, paymentData] =
         await Promise.all([
-          getCustomers(search),
-          getBilling(getCurrentBillingMonth()),
-          getPayments(),
+          getCustomers(search, collectorUserId),
+          getBilling(undefined, collectorUserId),
+          getPayments({ collectorUserId }),
         ]);
 
       setCustomers(customerData);
       setBilling(billingData);
-
-      const paymentMap = new Map();
-      for (const payment of paymentData) {
-        const existing =
-          paymentMap.get(payment.billing_id) || [];
-        existing.push(payment);
-        paymentMap.set(payment.billing_id, existing);
-      }
-      setPaymentsByBilling(paymentMap);
+      setPayments(paymentData);
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||
@@ -367,44 +346,65 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, collectorUserId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadData();
     }, 250);
     return () => clearTimeout(timer);
-  }, [search, loadData]);
+  }, [search, loadData, version]);
 
+  // The card shows the newest effective bill. It already carries earlier
+  // dues and credits forward into a single "Due" amount.
   const billingByCustomer = useMemo(() => {
     const map = new Map();
     for (const record of billing) {
-      map.set(record.customer_id, record);
+      if (record.is_effective === false) continue;
+      const existing = map.get(record.customer_id);
+      if (
+        !existing ||
+        String(record.billing_month) > String(existing.billing_month)
+      ) {
+        map.set(record.customer_id, record);
+      }
     }
     return map;
   }, [billing]);
 
-  const customerPaymentInfo = useMemo(() => {
+  const billedThisMonth = useMemo(() => {
+    const month = getCurrentBillingMonth().slice(0, 7);
+    const ids = new Set();
+    for (const record of billing) {
+      if (String(record.billing_month).slice(0, 7) === month) {
+        ids.add(record.customer_id);
+      }
+    }
+    return ids;
+  }, [billing]);
+
+  const paymentsByCustomer = useMemo(() => {
     const map = new Map();
-    for (const bill of billing) {
-      const payments =
-        paymentsByBilling.get(bill.billing_id || bill.id) ||
-        [];
-      const latestPayment =
-        [...payments].sort(
-          (a, b) =>
-            new Date(b.payment_date) - new Date(a.payment_date)
-        )[0] || null;
-      map.set(bill.customer_id, { payments, latestPayment });
+    for (const payment of payments) {
+      if (!payment.customer_id) continue;
+      const existing = map.get(payment.customer_id) || [];
+      existing.push(payment);
+      map.set(payment.customer_id, existing);
+    }
+    for (const list of map.values()) {
+      list.sort(
+        (a, b) =>
+          new Date(b.payment_date) - new Date(a.payment_date)
+      );
     }
     return map;
-  }, [billing, paymentsByBilling]);
+  }, [payments]);
 
   const filteredCustomers = useMemo(() => {
     return customers.filter((customer) => {
       const bill = billingByCustomer.get(customer.id);
-      const paymentInfo = customerPaymentInfo.get(customer.id);
-      const payments = paymentInfo?.payments || [];
+      const customerPayments =
+        paymentsByCustomer.get(customer.id) || [];
 
       if (!bill) {
         return (
@@ -423,12 +423,12 @@ export default function CustomersPage() {
         case FILTERS.PARTIAL:
           return bill.payment_status === "PARTIAL";
         case FILTERS.TODAY:
-          return payments.some(
+          return customerPayments.some(
             (payment) =>
               normalizeDate(payment.payment_date) === getToday()
           );
         case FILTERS.DATE:
-          return payments.some(
+          return customerPayments.some(
             (payment) =>
               normalizeDate(payment.payment_date) ===
               selectedDate
@@ -442,7 +442,7 @@ export default function CustomersPage() {
   }, [
     customers,
     billingByCustomer,
-    customerPaymentInfo,
+    paymentsByCustomer,
     activeFilter,
     selectedDate,
   ]);
@@ -469,12 +469,7 @@ export default function CustomersPage() {
   }, [filteredCustomers, placeFilter]);
 
   const selectableVisibleIds = useMemo(
-    () =>
-      placeFilteredCustomers
-        .filter(
-          (customer) => Number(customer.overdue_amount || 0) <= 0
-        )
-        .map((customer) => customer.id),
+    () => placeFilteredCustomers.map((customer) => customer.id),
     [placeFilteredCustomers]
   );
 
@@ -550,12 +545,56 @@ export default function CustomersPage() {
     await createCustomer(payload);
     setSuccess("Customer created.");
     await loadData();
+    notifyDataChanged();
   }
 
   async function handleUpdate(payload) {
-    await updateCustomer(editingCustomer.id, payload);
-    setSuccess("Customer updated.");
+    const updated = await updateCustomer(editingCustomer.id, payload);
+    setSuccess(
+      Number(updated?.repricedBills || 0) > 0
+        ? `Customer updated. ${updated.repricedBills} outstanding bill(s) updated to the new package price.`
+        : "Customer updated."
+    );
     await loadData();
+    notifyDataChanged();
+  }
+
+  function openAdjust(customersList) {
+    const rows = customersList
+      .map((customer) => {
+        const bill = billingByCustomer.get(customer.id);
+        if (!bill) return null;
+
+        return {
+          billingId: bill.billing_id || bill.id,
+          customerId: customer.id,
+          customerName: customer.customer_name,
+          stbNumber: customer.stb_number,
+          currentDue: Number(bill.balance_amount || 0),
+          currentOverpaid: Number(bill.credit_available || 0),
+        };
+      })
+      .filter(Boolean);
+
+    if (rows.length > 0) {
+      setError("");
+      setSuccess("");
+      setAdjustRows(rows);
+    }
+  }
+
+  async function handleAdjustSuccess(result) {
+    const changed =
+      result?.adjustments?.filter((item) => item.changed)
+        .length || 0;
+    setAdjustRows([]);
+    setSuccess(
+      changed > 0
+        ? `${changed} bill(s) adjusted. Due and credit have been recalculated.`
+        : "No changes were needed."
+    );
+    await loadData();
+    notifyDataChanged();
   }
 
   async function handleGenerateBill(customer) {
@@ -565,13 +604,13 @@ export default function CustomersPage() {
         customerId: customer.id,
         billingMonth: getCurrentBillingMonth(),
       });
-      const overpaid = result?.previousOverpaid;
-      const overpaidMessage =
-        Number(overpaid?.amount || 0) > 0
-          ? ` Overpaid balance from previous bills: ${formatMoney(overpaid.amount)}.`
+      const credit = Number(result?.creditApplied || 0);
+      const creditMessage =
+        credit > 0
+          ? ` Previous credit of ${formatMoney(credit)} applied to this bill.`
           : "";
       setSuccess(
-        `Billing generated for ${customer.customer_name}.${overpaidMessage}`
+        `Billing generated for ${customer.customer_name}.${creditMessage}`
       );
       await loadData();
     } catch (err) {
@@ -597,50 +636,30 @@ export default function CustomersPage() {
       const generated = result.generated?.length ?? 0;
       const skippedItems = result.skipped ?? [];
       const failed = result.failed ?? [];
-      const alreadyBilled = skippedItems.filter(
-        (item) => item.reason !== "ARREARS" && item.reason !== "INACTIVE"
-      ).length;
-      const arrearsSkipped = skippedItems.filter(
-        (item) => item.reason === "ARREARS"
-      ).length;
-      const inactiveSkipped = skippedItems.filter(
-        (item) => item.reason === "INACTIVE"
-      ).length;
-
       const parts = [
         `Generated ${generated} bill${generated === 1 ? "" : "s"}`,
       ];
 
-      if (alreadyBilled > 0) {
-        parts.push(`skipped ${alreadyBilled} already billed`);
+      if (skippedItems.length > 0) {
+        parts.push(`skipped ${skippedItems.length} already billed`);
       }
 
-      if (arrearsSkipped > 0) {
-        parts.push(
-          `skipped ${arrearsSkipped} in arrears (pay arrears first)`
-        );
-      }
-
-      if (inactiveSkipped > 0) {
-        parts.push(`skipped ${inactiveSkipped} inactive`);
-      }
-
-      const overpaidItems = (result.generated ?? []).filter(
-        (item) => Number(item?.previousOverpaid?.amount || 0) > 0
+      const creditItems = (result.generated ?? []).filter(
+        (item) => Number(item?.creditApplied || 0) > 0
       );
-      const overpaidNote =
-        overpaidItems.length > 0
-          ? ` Overpaid balances: ${overpaidItems
+      const creditNote =
+        creditItems.length > 0
+          ? ` Credits applied: ${creditItems
               .map(
                 (item) =>
                   `${item.customerName} (${formatMoney(
-                    item.previousOverpaid.amount
+                    item.creditApplied
                   )})`
               )
               .join(", ")}.`
           : "";
 
-      setSuccess(`${parts.join(", ")}.${overpaidNote}`);
+      setSuccess(`${parts.join(", ")}.${creditNote}`);
 
       if (failed.length > 0) {
         setError(
@@ -747,17 +766,17 @@ export default function CustomersPage() {
             <div className="customer-list">
               {group.customers.map((customer, index) => {
                 const bill = billingByCustomer.get(customer.id);
-                const paymentInfo = customerPaymentInfo.get(
-                  customer.id
-                );
 
                 return (
                   <SortableCustomerCard
                     key={customer.id}
                     customer={customer}
                     bill={bill}
+                    paymentDates={
+                      paymentsByCustomer.get(customer.id) || []
+                    }
+                    billedThisMonth={billedThisMonth.has(customer.id)}
                     serial={index + 1}
-                    latestPayment={paymentInfo?.latestPayment}
                     selected={selectedIds.has(customer.id)}
                     onToggleSelect={toggleCustomerSelection}
                     dragDisabled={isAdmin}
@@ -782,6 +801,8 @@ export default function CustomersPage() {
                       })
                     }
                     onGenerateBill={handleGenerateBill}
+                    onAdjust={openAdjust}
+                    canAdjust={isAdmin}
                   />
                 );
               })}
@@ -856,6 +877,11 @@ export default function CustomersPage() {
           </select>
         </label>
 
+        <CollectorFilter
+          value={collectorUserId}
+          onChange={setCollectorUserId}
+        />
+
         <div className="filter-row">
           {[
             [FILTERS.ALL, "All"],
@@ -924,6 +950,26 @@ export default function CustomersPage() {
                 ? "Generating..."
                 : `Generate bill (${selectedIds.size})`}
             </button>
+            {isAdmin && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={selectedIds.size === 0}
+                onClick={() =>
+                  openAdjust(
+                    [...selectedIds]
+                      .map((id) =>
+                        customers.find(
+                          (item) => item.id === id
+                        )
+                      )
+                      .filter(Boolean)
+                  )
+                }
+              >
+                Edit due / overpaid ({selectedIds.size})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1009,6 +1055,15 @@ export default function CustomersPage() {
             );
             await loadData();
           }}
+        />
+      )}
+
+      {adjustRows.length > 0 && (
+        <AdjustBillsModal
+          open
+          rows={adjustRows}
+          onClose={() => setAdjustRows([])}
+          onSuccess={handleAdjustSuccess}
         />
       )}
     </section>

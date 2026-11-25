@@ -47,6 +47,13 @@
   min-width: 170px;
 }
 
+.page-header-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
 /* ---------- Toolbar ---------- */
 
 .toolbar {
@@ -967,6 +974,33 @@
 .billing-line .status-pill {
   font-size: 0.64rem;
   padding: 2px 8px;
+}
+
+.billing-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.billing-note {
+  margin: -2px 0 0;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.billing-line--dates {
+  align-items: start;
+}
+
+.billing-line--dates strong {
+  max-width: 62%;
+  font-size: 0.74rem;
+  font-weight: 500;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .customer-actions {

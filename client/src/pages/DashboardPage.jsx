@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { getDashboard } from "../api/dashboard";
+import CollectorFilter from "../components/CollectorFilter";
 import StatCard from "../components/StatCard";
 import {
   formatMoney,
@@ -52,6 +53,7 @@ export default function DashboardPage({ title }) {
   const [billingMonth, setBillingMonth] = useState(
     getCurrentBillingMonth()
   );
+  const [collectorUserId, setCollectorUserId] = useState("");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,7 +65,10 @@ export default function DashboardPage({ title }) {
       try {
         setLoading(true);
         setError("");
-        const dashboard = await getDashboard(billingMonth);
+        const dashboard = await getDashboard(
+          billingMonth,
+          collectorUserId
+        );
         if (!cancelled) {
           setData(dashboard);
         }
@@ -85,7 +90,7 @@ export default function DashboardPage({ title }) {
     return () => {
       cancelled = true;
     };
-  }, [billingMonth]);
+  }, [billingMonth, collectorUserId]);
 
   const summary = data?.summary;
 
@@ -164,17 +169,24 @@ export default function DashboardPage({ title }) {
           <h1>{title}</h1>
           <p>Collection overview for the selected billing month.</p>
         </div>
-        <label className="field" style={{ minWidth: 180 }}>
-          <span>Billing month</span>
-          <input
-            type="month"
-            className="input"
-            value={billingMonth.slice(0, 7)}
-            onChange={(event) =>
-              setBillingMonth(`${event.target.value}-01`)
-            }
+        <div className="page-header-filters">
+          <label className="field" style={{ minWidth: 180 }}>
+            <span>Billing month</span>
+            <input
+              type="month"
+              className="input"
+              value={billingMonth.slice(0, 7)}
+              onChange={(event) =>
+                setBillingMonth(`${event.target.value}-01`)
+              }
+            />
+          </label>
+
+          <CollectorFilter
+            value={collectorUserId}
+            onChange={setCollectorUserId}
           />
-        </label>
+        </div>
       </div>
 
       {error && <p className="error-message">{error}</p>}

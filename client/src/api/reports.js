@@ -20,6 +20,10 @@ export async function getBillingReport(filters = {}) {
     params.to = normalized.to;
   }
 
+  if (normalized.collectorUserId) {
+    params.collectorUserId = normalized.collectorUserId;
+  }
+
   const response = await apiClient.get("/reports/billing", {
     params,
   });
@@ -41,6 +45,9 @@ export async function getCustomersReport(filters = {}) {
   }
   if (filters.includeInactive === false) {
     params.includeInactive = false;
+  }
+  if (filters.assignedUserId) {
+    params.assignedUserId = filters.assignedUserId;
   }
 
   const response = await apiClient.get("/customers/report", {

@@ -531,6 +531,18 @@ table.data-table .empty-state {
   border-color: rgba(225, 29, 72, 0.16);
 }
 
+.status-active {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: rgba(5, 150, 105, 0.16);
+}
+
+.status-deactive {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: rgba(225, 29, 72, 0.16);
+}
+
 .status-carried {
   color: var(--ink-muted);
   background: var(--surface-2);

@@ -14,6 +14,7 @@ import {
   setDefaultPackage,
   updatePackage,
 } from "../api/packages";
+import { useDataRefresh } from "../context/DataRefreshContext";
 import { formatMoney, normalizeDate } from "../utils/format";
 
 const emptyForm = {
@@ -27,6 +28,7 @@ const emptyEditForm = {
 };
 
 export default function PackagesPage() {
+  const { notifyDataChanged } = useDataRefresh();
   const [packages, setPackages] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
@@ -94,6 +96,7 @@ export default function PackagesPage() {
       setForm(emptyForm);
       setSuccess("Package created successfully.");
       await loadPackages();
+      notifyDataChanged();
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||
@@ -126,14 +129,19 @@ export default function PackagesPage() {
     setSuccess("");
 
     try {
-      await updatePackage(editingId, {
+      const updated = await updatePackage(editingId, {
         packageName: editingForm.packageName.trim(),
         monthlyAmount: Number(editingForm.monthlyAmount),
       });
       setEditingId(null);
       setEditingForm(emptyEditForm);
-      setSuccess("Package updated.");
+      setSuccess(
+        Number(updated?.repricedBills || 0) > 0
+          ? `Package updated. ${updated.repricedBills} outstanding bill(s) updated to the new price.`
+          : "Package updated."
+      );
       await loadPackages();
+      notifyDataChanged();
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||
@@ -153,6 +161,7 @@ export default function PackagesPage() {
         `${packageRow.package_name} is now the default package.`
       );
       await loadPackages();
+      notifyDataChanged();
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||
@@ -173,6 +182,7 @@ export default function PackagesPage() {
         setSuccess(`${packageRow.package_name} activated.`);
       }
       await loadPackages();
+      notifyDataChanged();
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||

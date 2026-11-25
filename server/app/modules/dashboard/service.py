@@ -2,6 +2,88 @@ from typing import Any
 
 from app.config.database import get_connection
 from app.modules.customers.service import get_customer_status_summary
+from app.utils.collector_scope import (
+    collector_billing_exists,
+    collector_customer_exists,
+    collector_paid_join,
+    scoped_billing_select,
+    validate_collector_user_id,
+)
+
+BILLING_SELECT = """
+  cbs.billing_id,
+  cbs.customer_id,
+  c.customer_name,
+  c.stb_number,
+  c.phone,
+  c.place,
+  c.assigned_user_id,
+  u.username AS assigned_username,
+  u.full_name AS assigned_user_name,
+  cbs.billing_month,
+  cbs.package_name,
+  cbs.monthly_amount,
+  cbs.arrears_amount,
+  cbs.due_amount,
+  cbs.is_effective,
+  cbs.total_paid,
+  cbs.balance_amount,
+  cbs.payment_status
+"""
+
+SCOPED_SUMMARY_SELECT = """
+  COALESCE(SUM(cbs.due_amount), 0) AS total_billed,
+  COALESCE(SUM(COALESCE(cp.total_paid, 0)), 0) AS total_collected,
+  COALESCE(
+    SUM(GREATEST(
+      GREATEST(cbs.due_amount, 0) - COALESCE(cp.total_paid, 0), 0
+    )), 0
+  ) AS total_outstanding,
+  COUNT(
+    CASE
+      WHEN COALESCE(cp.total_paid, 0) = 0
+        AND GREATEST(cbs.due_amount, 0) > 0 THEN 1
+    END
+  ) AS unpaid_count,
+  COUNT(
+    CASE
+      WHEN COALESCE(cp.total_paid, 0)
+           > GREATEST(cbs.due_amount, 0) THEN 1
+    END
+  ) AS overpaid_count,
+  COUNT(
+    CASE
+      WHEN COALESCE(cp.total_paid, 0) > 0
+        AND COALESCE(cp.total_paid, 0)
+            < GREATEST(cbs.due_amount, 0) THEN 1
+    END
+  ) AS partial_count,
+  COUNT(
+    CASE
+      WHEN COALESCE(cp.total_paid, 0) > 0
+        AND COALESCE(cp.total_paid, 0)
+            = GREATEST(cbs.due_amount, 0) THEN 1
+    END
+  ) AS paid_count
+"""
+
+DEFAULT_SUMMARY_SELECT = """
+  COALESCE(SUM(cbs.due_amount), 0) AS total_billed,
+  COALESCE(SUM(cbs.total_paid), 0) AS total_collected,
+  COALESCE(SUM(cbs.balance_amount), 0) AS total_outstanding,
+  COUNT(
+    CASE WHEN cbs.payment_status = 'PAID' THEN 1 END
+  ) AS paid_count,
+  COUNT(
+    CASE WHEN cbs.payment_status = 'PARTIAL' THEN 1 END
+  ) AS partial_count,
+  COUNT(
+    CASE WHEN cbs.payment_status = 'UNPAID' THEN 1 END
+  ) AS unpaid_count,
+  COUNT(
+    CASE WHEN cbs.payment_status = 'OVERPAID' THEN 1 END
+  ) AS overpaid_count
+"""
 
 
 def get_dashboard(
@@ -9,9 +91,31 @@ def get_dashboard(
     user_id: str,
     role: str,
     billing_month: str | None = None,
+    collector_user_id: str | None = None,
 ) -> dict[str, Any]:
+    validate_collector_user_id(collector_user_id)
+
     values: list[Any] = []
     conditions: list[str] = []
+    collector_join = ""
+    billing_select = BILLING_SELECT
+    summary_select = DEFAULT_SUMMARY_SELECT
+
+    scoped = role == "ADMIN" and bool(collector_user_id)
+
+    if scoped:
+        # Placeholder order: lateral join, then WHERE conditions.
+        values.append(collector_user_id)
+        collector_join = collector_paid_join("cbs.billing_id")
+        billing_select = scoped_billing_select(
+            BILLING_SELECT,
+            due_expr="cbs.due_amount",
+            credit_balance_expr="cbs.credit_balance",
+            credit_adjustment_expr="cbs.credit_adjustment",
+        )
+        summary_select = SCOPED_SUMMARY_SELECT
+        values.append(collector_user_id)
+        conditions.append(collector_billing_exists("cbs.billing_id"))
 
     if billing_month:
         values.append(billing_month)
@@ -35,6 +139,10 @@ def get_dashboard(
         customer_values.append(user_id)
         customer_conditions.append("c.assigned_user_id = %s")
 
+    if scoped:
+        customer_values.append(collector_user_id)
+        customer_conditions.append(collector_customer_exists("c.id"))
+
     customer_where = " AND ".join(customer_conditions)
 
     with get_connection() as conn:
@@ -53,41 +161,17 @@ def get_dashboard(
             status_summary = get_customer_status_summary(
                 user_id=user_id,
                 role=role,
+                collector_user_id=collector_user_id,
             )
 
             cur.execute(
                 f"""
                 SELECT
-                  COALESCE(SUM(cbs.due_amount), 0) AS total_billed,
-                  COALESCE(SUM(cbs.total_paid), 0) AS total_collected,
-                  COALESCE(SUM(cbs.balance_amount), 0) AS total_outstanding,
-                  COUNT(
-                    CASE
-                      WHEN cbs.payment_status = 'PAID'
-                      THEN 1
-                    END
-                  ) AS paid_count,
-                  COUNT(
-                    CASE
-                      WHEN cbs.payment_status = 'PARTIAL'
-                      THEN 1
-                    END
-                  ) AS partial_count,
-                  COUNT(
-                    CASE
-                      WHEN cbs.payment_status = 'UNPAID'
-                      THEN 1
-                    END
-                  ) AS unpaid_count,
-                  COUNT(
-                    CASE
-                      WHEN cbs.payment_status = 'OVERPAID'
-                      THEN 1
-                    END
-                  ) AS overpaid_count
+                  {summary_select}
                 FROM customer_billing_summary cbs
                 INNER JOIN customers c
                   ON c.id = cbs.customer_id
+                {collector_join}
                 {summary_where_sql}
                 """,
                 values,
@@ -97,29 +181,13 @@ def get_dashboard(
             cur.execute(
                 f"""
                 SELECT
-                  cbs.billing_id,
-                  cbs.customer_id,
-                  c.customer_name,
-                  c.stb_number,
-                  c.phone,
-                  c.place,
-                  c.assigned_user_id,
-                  u.username AS assigned_username,
-                  u.full_name AS assigned_user_name,
-                  cbs.billing_month,
-                  cbs.package_name,
-                  cbs.monthly_amount,
-                  cbs.arrears_amount,
-                  cbs.due_amount,
-                  cbs.is_effective,
-                  cbs.total_paid,
-                  cbs.balance_amount,
-                  cbs.payment_status
+                  {billing_select}
                 FROM customer_billing_summary cbs
                 INNER JOIN customers c
                   ON c.id = cbs.customer_id
                 INNER JOIN users u
                   ON u.id = c.assigned_user_id
+                {collector_join}
                 {where_sql}
                 ORDER BY
                   cbs.billing_month DESC,
@@ -139,6 +207,10 @@ def get_dashboard(
             if role != "ADMIN":
                 payment_values.append(user_id)
                 payment_conditions.append("c.assigned_user_id = %s")
+
+            if scoped:
+                payment_values.append(collector_user_id)
+                payment_conditions.append("p.created_by = %s")
 
             payment_where = (
                 f"WHERE {' AND '.join(payment_conditions)}"

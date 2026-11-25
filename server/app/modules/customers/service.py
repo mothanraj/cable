@@ -1,6 +1,12 @@
 from typing import Any
 
 from app.config.database import get_connection
+from app.modules.billing.reprice import reprice_outstanding_bills
+from app.utils.collector_scope import (
+    collector_customer_exists,
+    validate_collector_user_id,
+    validate_user_id,
+)
 from app.utils.errors import AppError
 
 # A bill is "overdue" once its billing month has passed with money still
@@ -22,20 +28,49 @@ def _overdue_condition(alias: str = "cbs") -> str:
 
 
 def sync_customer_statuses_with_cursor(cur) -> int:
-    """Align customers.is_active with their payment status.
+    """Align customers.is_active with the monthly service rule.
 
-    Deactivated (inactive) = has an overdue bill. Active = no overdue bill.
-    Only rows whose status actually changes are written.
+    Paying a bill for month M keeps the connection active through the end
+    of month M+1. A customer is deactivated when either:
+
+    * an effective bill still has a balance and its month has passed (or it
+      carries rolled-forward arrears), or
+    * they have been billed before but have no bill for the current or the
+      previous month - i.e. the collector skipped generating a new bill.
+
+    A customer who has never been billed stays active until their first bill
+    is generated. Only rows whose status actually changes are written.
     """
     overdue = _overdue_condition()
+
+    any_bill = """
+      EXISTS (
+        SELECT 1 FROM monthly_billing mb0
+        WHERE mb0.customer_id = c.id
+      )
+    """
+
+    recent_bill = """
+      EXISTS (
+        SELECT 1 FROM monthly_billing mb
+        WHERE mb.customer_id = c.id
+          AND mb.rolled_forward_to_billing_id IS NULL
+          AND mb.billing_month >=
+              date_trunc('month', CURRENT_DATE - INTERVAL '1 month')::date
+      )
+    """
+
     cur.execute(
         f"""
         UPDATE customers c
         SET is_active = FALSE, updated_at = NOW()
         WHERE c.is_active = TRUE
-          AND EXISTS (
-            SELECT 1 FROM customer_billing_summary cbs
-            WHERE cbs.customer_id = c.id AND {overdue}
+          AND (
+            EXISTS (
+              SELECT 1 FROM customer_billing_summary cbs
+              WHERE cbs.customer_id = c.id AND {overdue}
+            )
+            OR ({any_bill} AND NOT ({recent_bill}))
           )
         """
     )
@@ -50,6 +85,7 @@ def sync_customer_statuses_with_cursor(cur) -> int:
             SELECT 1 FROM customer_billing_summary cbs
             WHERE cbs.customer_id = c.id AND {overdue}
           )
+          AND (NOT ({any_bill}) OR {recent_bill})
         """
     )
     reactivated = cur.rowcount
@@ -73,62 +109,30 @@ def get_overdue_bills_with_cursor(
     Mirrors the `OVERDUE_CONDITION` used by the status sync so paying the
     reported total always clears the customer's deactivation.
     """
+    # Read through the summary view so credits, adjustments and the shared
+    # overdue definition are always in sync with the customer status sync.
     cur.execute(
-        """
+        f"""
         SELECT
-          mb.id,
-          mb.billing_month,
-          mb.monthly_amount,
-          mb.arrears_amount
-        FROM monthly_billing mb
-        WHERE mb.customer_id = %s
-          AND mb.rolled_forward_to_billing_id IS NULL
-        ORDER BY mb.billing_month, mb.id
+          cbs.billing_id AS id,
+          cbs.billing_month,
+          cbs.balance_amount
+        FROM customer_billing_summary cbs
+        WHERE cbs.customer_id = %s
+          AND {_overdue_condition()}
+        ORDER BY cbs.billing_month ASC
         """,
         (customer_id,),
     )
-    bills = cur.fetchall()
 
-    if not bills:
-        return []
-
-    cur.execute(
-        """
-        SELECT billing_id, COALESCE(SUM(collected_amount), 0) AS total_paid
-        FROM payments
-        WHERE billing_id = ANY(%s)
-        GROUP BY billing_id
-        """,
-        ([row["id"] for row in bills],),
-    )
-    paid_map = {
-        row["billing_id"]: row["total_paid"] for row in cur.fetchall()
-    }
-
-    cur.execute(
-        "SELECT date_trunc('month', CURRENT_DATE)::date AS month_start"
-    )
-    month_start = cur.fetchone()["month_start"]
-
-    overdue: list[dict[str, Any]] = []
-
-    for row in bills:
-        due = row["monthly_amount"] + row["arrears_amount"]
-        balance = max(due - paid_map.get(row["id"], 0), 0)
-
-        if balance <= 0:
-            continue
-
-        if row["billing_month"] < month_start or row["arrears_amount"] > 0:
-            overdue.append(
-                {
-                    "id": row["id"],
-                    "billing_month": row["billing_month"],
-                    "balance": balance,
-                }
-            )
-
-    return overdue
+    return [
+        {
+            "id": row["id"],
+            "billing_month": row["billing_month"],
+            "balance": row["balance_amount"],
+        }
+        for row in cur.fetchall()
+    ]
 
 
 def get_customer_arrears_with_cursor(
@@ -144,14 +148,25 @@ def get_customer_arrears_with_cursor(
 
 
 def get_customer_status_summary(
-    *, user_id: str | None = None, role: str = "ADMIN"
+    *,
+    user_id: str | None = None,
+    role: str = "ADMIN",
+    collector_user_id: str | None = None,
 ) -> dict[str, Any]:
+    validate_collector_user_id(collector_user_id)
+
     values: list[Any] = []
-    scope = ""
+    conditions: list[str] = []
 
     if role != "ADMIN" and user_id:
         values.append(user_id)
-        scope = "WHERE c.assigned_user_id = %s"
+        conditions.append("c.assigned_user_id = %s")
+
+    if role == "ADMIN" and collector_user_id:
+        values.append(collector_user_id)
+        conditions.append(collector_customer_exists("c.id"))
+
+    scope = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     overdue = _overdue_condition()
     with get_connection() as conn:
@@ -183,13 +198,20 @@ def get_customers(
     user_id: str,
     role: str,
     search: str | None = None,
+    collector_user_id: str | None = None,
 ) -> list[dict[str, Any]]:
+    validate_collector_user_id(collector_user_id)
+
     values: list[Any] = []
     conditions: list[str] = []
 
     if role != "ADMIN":
         values.append(user_id)
         conditions.append(f"c.assigned_user_id = %s")
+
+    if role == "ADMIN" and collector_user_id:
+        values.append(collector_user_id)
+        conditions.append(collector_customer_exists("c.id"))
 
     if search and search.strip():
         values.append(f"%{search.strip()}%")
@@ -251,7 +273,7 @@ def get_customers(
                 LEFT JOIN (
                   SELECT
                     cbs.customer_id,
-                    SUM(GREATEST(cbs.total_paid - cbs.due_amount, 0)) AS overpaid_amount
+                    SUM(cbs.credit_available) AS overpaid_amount
                   FROM customer_billing_summary cbs
                   WHERE cbs.is_effective = TRUE
                   GROUP BY cbs.customer_id
@@ -297,17 +319,26 @@ def get_customers_report(
     place_id: str | None = None,
     package_id: str | None = None,
     include_inactive: bool = True,
+    assigned_user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Admin customer directory: every customer, all details.
 
-    Supports free-text search (name / STB / phone / place) plus place and
-    package filters. Inactive customers are included by default.
+    Supports free-text search (name / STB / phone / place) plus place,
+    package and assigned-user filters. Billing and payment activity are
+    deliberately not required: a customer with no generated bill is still
+    part of the directory. Inactive customers are included by default.
     """
+    validate_user_id(assigned_user_id)
+
     values: list[Any] = []
     conditions: list[str] = []
 
     if not include_inactive:
         conditions.append("c.is_active = TRUE")
+
+    if assigned_user_id:
+        values.append(assigned_user_id)
+        conditions.append("c.assigned_user_id = %s")
 
     if search and search.strip():
         pattern = f"%{search.strip()}%"
@@ -378,7 +409,7 @@ def get_customers_report(
                 LEFT JOIN (
                   SELECT
                     cbs.customer_id,
-                    SUM(GREATEST(cbs.total_paid - cbs.due_amount, 0)) AS overpaid_amount
+                    SUM(cbs.credit_available) AS overpaid_amount
                   FROM customer_billing_summary cbs
                   WHERE cbs.is_effective = TRUE
                   GROUP BY cbs.customer_id
@@ -551,6 +582,24 @@ def update_customer(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            old_values: list[Any] = [customer_id]
+            old_ownership = ""
+
+            if role != "ADMIN":
+                old_values.append(user_id)
+                old_ownership = "AND assigned_user_id = %s"
+
+            cur.execute(
+                f"""
+                SELECT package_id::text AS package_id
+                FROM customers
+                WHERE id = %s
+                  {old_ownership}
+                """,
+                old_values,
+            )
+            old = cur.fetchone()
+
             cur.execute(
                 f"""
                 UPDATE customers
@@ -583,8 +632,30 @@ def update_customer(
                 values,
             )
             customer = cur.fetchone()
+
+            repriced = 0
+            if old and str(old["package_id"]) != str(payload["package_id"]):
+                cur.execute(
+                    """
+                    SELECT package_name, monthly_amount
+                    FROM packages
+                    WHERE id = %s
+                    """,
+                    (payload["package_id"],),
+                )
+                new_package = cur.fetchone()
+
+                if new_package:
+                    repriced = reprice_outstanding_bills(
+                        cur,
+                        [customer_id],
+                        new_package["package_name"],
+                        new_package["monthly_amount"],
+                    )
+                    sync_customer_statuses_with_cursor(cur)
+
             conn.commit()
-            return customer
+            return {**customer, "repricedBills": repriced}
 
 
 def set_customer_status(

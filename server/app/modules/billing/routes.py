@@ -1,16 +1,19 @@
 import re
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from psycopg.errors import UniqueViolation
 
-from app.middleware.auth import CurrentUser
+from app.middleware.auth import CurrentUser, require_roles
 from app.modules.billing import service as billing_service
 from app.utils.errors import AppError
 from app.utils.responses import success_response
 from app.utils.serialize import serialize_row, serialize_rows
 
 router = APIRouter(prefix="/billing", tags=["billing"])
+
+AdminUser = Annotated[dict, Depends(require_roles("ADMIN"))]
 
 BILLING_MONTH_RE = re.compile(r"^\d{4}-\d{2}-01$")
 
@@ -23,6 +26,19 @@ class GenerateBillingRequest(BaseModel):
 class GenerateBillingBulkRequest(BaseModel):
     customerIds: list[str] = Field(min_length=1, max_length=500)
     billingMonth: str
+
+
+class AdjustBillEntry(BaseModel):
+    billingId: str
+    newDue: float = Field(ge=0)
+    newOverpaid: float = Field(ge=0)
+
+
+class AdjustBillsRequest(BaseModel):
+    entries: list[AdjustBillEntry] = Field(
+        min_length=1, max_length=500
+    )
+    reason: str | None = Field(default=None, max_length=500)
 
 
 def _validate_billing_month(value: str | None) -> None:
@@ -38,12 +54,14 @@ def _validate_billing_month(value: str | None) -> None:
 def get_billing(
     user: CurrentUser,
     billingMonth: str | None = Query(default=None),
+    collectorUserId: str | None = Query(default=None),
 ):
     _validate_billing_month(billingMonth)
     billing = billing_service.get_billing(
         user_id=user["id"],
         role=user["role"],
         billing_month=billingMonth,
+        collector_user_id=collectorUserId,
     )
     return success_response({"billing": serialize_rows(billing)})
 
@@ -105,6 +123,8 @@ def generate_billing(user: CurrentUser, body: GenerateBillingRequest):
         {
             "billing": serialize_row(result["billing"]),
             "previousOverpaid": result["previousOverpaid"],
+            "creditApplied": result["creditApplied"],
+            "creditBalance": result["creditBalance"],
         },
         status_code=201,
     )
@@ -150,5 +170,34 @@ def generate_billing_bulk(
             "generated": result["generated"],
             "skipped": result["skipped"],
             "failed": result["failed"],
+        }
+    )
+
+
+@router.patch("/adjust")
+def adjust_bills(
+    _admin: AdminUser,
+    body: AdjustBillsRequest,
+):
+    result = billing_service.adjust_bills(
+        entries=[item.model_dump() for item in body.entries],
+        reason=body.reason.strip() if body.reason else None,
+        user_id=_admin["id"],
+    )
+
+    return success_response(
+        {
+            "adjustments": [
+                {
+                    "billingId": item["billingId"],
+                    "customerId": item["customerId"],
+                    "changed": item["changed"],
+                    "adjustment": serialize_row(
+                        item.get("adjustment")
+                    ),
+                    "billing": serialize_row(item["billing"]),
+                }
+                for item in result["adjustments"]
+            ]
         }
     )

@@ -21,10 +21,14 @@ import {
 import { getPackages } from "../api/packages";
 import { getPlaces } from "../api/places";
 import CollectPaymentModal from "../components/CollectPaymentModal";
+import CollectorFilter from "../components/CollectorFilter";
 import { useAuth } from "../context/AuthContext";
+import { useDataRefresh } from "../context/DataRefreshContext";
 import {
+  formatDateValue,
   formatMoney,
   getCurrentBillingMonth,
+  getMonthRange,
   getOverpaidAmount,
   normalizeDate,
   statusClass,
@@ -74,32 +78,6 @@ const STATUS_REPORTS = [
     emptyText: "No unpaid customers for this period.",
   },
 ];
-
-function formatDateValue(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getMonthRange(offset = 0) {
-  const now = new Date();
-  const start = new Date(
-    now.getFullYear(),
-    now.getMonth() + offset,
-    1
-  );
-  const end = new Date(
-    now.getFullYear(),
-    now.getMonth() + offset + 1,
-    0
-  );
-
-  return {
-    from: formatDateValue(start),
-    to: formatDateValue(end),
-  };
-}
 
 function sumField(records, key) {
   return records.reduce(
@@ -395,6 +373,7 @@ function ReportCard({ report, records, onOpen, delay = 0 }) {
 
 export default function ReportsPage() {
   const { user } = useAuth();
+  const { version } = useDataRefresh();
   const isAdmin = user?.role === "ADMIN";
 
   const [billingMonth, setBillingMonth] = useState(
@@ -406,6 +385,8 @@ export default function ReportsPage() {
   const [to, setTo] = useState(() => getMonthRange(0).to);
   const [placeFilter, setPlaceFilter] = useState("all");
   const [packageFilter, setPackageFilter] = useState("all");
+  const [collectorUserId, setCollectorUserId] = useState("");
+  const [assignedUserId, setAssignedUserId] = useState("");
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [showAllCustomers, setShowAllCustomers] = useState(false);
   const [report, setReport] = useState(null);
@@ -450,7 +431,11 @@ export default function ReportsPage() {
         }
 
         const data = isAdmin
-          ? await getBillingReport({ from, to })
+          ? await getBillingReport({
+              from,
+              to,
+              collectorUserId,
+            })
           : await getBillingReport({ billingMonth });
 
         if (!cancelled) setReport(data);
@@ -470,7 +455,7 @@ export default function ReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, from, to, billingMonth]);
+  }, [isAdmin, from, to, billingMonth, collectorUserId, version]);
 
   const loadCustomers = useCallback(async () => {
     if (!isAdmin) return;
@@ -481,7 +466,10 @@ export default function ReportsPage() {
 
       const [customers, places, packages] =
         await Promise.all([
-          getCustomersReport({ includeInactive: true }),
+          getCustomersReport({
+            includeInactive: true,
+            assignedUserId,
+          }),
           getPlaces({ includeInactive: true }),
           getPackages({ includeInactive: true }),
         ]);
@@ -497,11 +485,11 @@ export default function ReportsPage() {
     } finally {
       setCustomersLoading(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, assignedUserId]);
 
   useEffect(() => {
     loadCustomers();
-  }, [loadCustomers]);
+  }, [loadCustomers, version]);
 
   // Debounce the search box so large customer lists do not re-filter on
   // every keystroke.
@@ -594,7 +582,7 @@ export default function ReportsPage() {
 
   const groupedRecords = useMemo(
     () => {
-      const effective = records.filter(
+      const effective = filteredRecords.filter(
         (row) => row.is_effective !== false
       );
       return {
@@ -612,7 +600,7 @@ export default function ReportsPage() {
         ),
       };
     },
-    [records]
+    [filteredRecords]
   );
 
   const filteredCustomers = useMemo(() => {
@@ -626,6 +614,7 @@ export default function ReportsPage() {
           row.phone,
           row.place,
           row.place_name,
+          row.package_name,
         ]
           .filter(Boolean)
           .join(" ")
@@ -718,6 +707,26 @@ export default function ReportsPage() {
 
   const detailSummary = summarize(detailRecords);
 
+  const activeFilterLabel = useMemo(() => {
+    const parts = [`${from} to ${to}`];
+    if (effectivePlace !== "all") {
+      parts.push(`Place: ${effectivePlace}`);
+    }
+    if (effectivePackage !== "all") {
+      parts.push(`Package: ${effectivePackage}`);
+    }
+    if (collectorUserId) {
+      parts.push("Collector filter active");
+    }
+    return parts.join(" · ");
+  }, [
+    from,
+    to,
+    effectivePlace,
+    effectivePackage,
+    collectorUserId,
+  ]);
+
   function applyPreset(preset) {
     if (preset === "today") {
       const today = formatDateValue(new Date());
@@ -740,6 +749,15 @@ export default function ReportsPage() {
     setTo(range.to);
     setPlaceFilter("all");
     setPackageFilter("all");
+    setCollectorUserId("");
+  }
+
+  function resetCustomerFilters() {
+    setCustomerSearch("");
+    setCustomerPlace("all");
+    setCustomerPackage("all");
+    setCustomerStatus("all");
+    setAssignedUserId("");
   }
 
   async function handleDownload(format) {
@@ -1091,6 +1109,11 @@ export default function ReportsPage() {
           </select>
         </label>
 
+        <CollectorFilter
+          value={collectorUserId}
+          onChange={setCollectorUserId}
+        />
+
         <div className="filter-row report-presets">
           <button
             type="button"
@@ -1340,7 +1363,7 @@ export default function ReportsPage() {
               <div className="panel-header">
                 <h2>{activeReport.title}</h2>
                 <span className="muted">
-                  {from} to {to}
+                  {activeFilterLabel}
                 </span>
               </div>
               <ReportTable
@@ -1433,6 +1456,22 @@ export default function ReportsPage() {
               <option value="inactive">Inactive</option>
             </select>
           </label>
+
+          <CollectorFilter
+            value={assignedUserId}
+            onChange={setAssignedUserId}
+            label="Assigned to"
+            allLabel="All users"
+            includeInactive
+          />
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={resetCustomerFilters}
+          >
+            Clear filters
+          </button>
 
         </div>
 

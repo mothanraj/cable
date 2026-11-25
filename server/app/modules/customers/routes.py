@@ -59,6 +59,7 @@ def _optional_text(value: str | None) -> str | None:
 def get_customers(
     user: CurrentUser,
     search: str | None = Query(default=None),
+    collectorUserId: str | None = Query(default=None),
 ):
     # Keep the list in step with the arrears rule so a customer with a
     # pending past-month bill is always shown as deactivated.
@@ -67,6 +68,7 @@ def get_customers(
         user_id=user["id"],
         role=user["role"],
         search=search,
+        collector_user_id=collectorUserId,
     )
     return success_response({"customers": serialize_rows(customers)})
 
@@ -78,6 +80,7 @@ def get_customers_report(
     placeId: str | None = Query(default=None),
     packageId: str | None = Query(default=None),
     includeInactive: bool = Query(default=True),
+    assignedUserId: str | None = Query(default=None),
 ):
     customer_service.sync_customer_statuses()
     customers = customer_service.get_customers_report(
@@ -85,6 +88,7 @@ def get_customers_report(
         place_id=placeId,
         package_id=packageId,
         include_inactive=includeInactive,
+        assigned_user_id=assignedUserId,
     )
     return success_response({"customers": serialize_rows(customers)})
 

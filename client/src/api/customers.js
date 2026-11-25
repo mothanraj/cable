@@ -1,9 +1,17 @@
 import apiClient from "./client";
 
-export async function getCustomers(search = "") {
-  const response = await apiClient.get("/customers", {
-    params: search.trim() ? { search: search.trim() } : {},
-  });
+export async function getCustomers(search = "", collectorUserId) {
+  const params = {};
+
+  if (search.trim()) {
+    params.search = search.trim();
+  }
+
+  if (collectorUserId) {
+    params.collectorUserId = collectorUserId;
+  }
+
+  const response = await apiClient.get("/customers", { params });
   return response.data.data.customers;
 }
 

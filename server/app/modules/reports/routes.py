@@ -45,6 +45,7 @@ def get_billing_report(
     billingMonth: str | None = Query(default=None),
     from_date: str | None = Query(default=None, alias="from"),
     to_date: str | None = Query(default=None, alias="to"),
+    collectorUserId: str | None = Query(default=None),
 ):
     if billingMonth is not None and not BILLING_MONTH_RE.match(billingMonth):
         raise AppError(
@@ -90,6 +91,7 @@ def get_billing_report(
         billing_month=billingMonth,
         from_date=from_date,
         to_date=to_date,
+        collector_user_id=collectorUserId,
     )
 
     return success_response({"billing": serialize_value(report)})

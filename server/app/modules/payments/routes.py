@@ -1,9 +1,10 @@
 import re
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from app.middleware.auth import CurrentUser
+from app.middleware.auth import CurrentUser, require_roles
 from app.modules.payments import service as payment_service
 from app.utils.errors import AppError
 from app.utils.responses import success_response
@@ -14,6 +15,8 @@ from app.utils.serialize import (
 )
 
 router = APIRouter(prefix="/payments", tags=["payments"])
+
+AdminUser = Annotated[dict, Depends(require_roles("ADMIN"))]
 
 PAYMENT_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -32,15 +35,22 @@ class PayArrearsRequest(BaseModel):
     remarks: str | None = None
 
 
+class UpdatePaymentRequest(BaseModel):
+    collectedAmount: float = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=500)
+
+
 @router.get("")
 def get_payments(
     user: CurrentUser,
     billingId: str | None = Query(default=None),
+    collectorUserId: str | None = Query(default=None),
 ):
     payments = payment_service.get_payments(
         user_id=user["id"],
         role=user["role"],
         billing_id=billingId,
+        collector_user_id=collectorUserId,
     )
     return success_response({"payments": serialize_rows(payments)})
 
@@ -134,4 +144,32 @@ def pay_arrears(user: CurrentUser, body: PayArrearsRequest):
             "reactivated": result["reactivated"],
         },
         status_code=201,
+    )
+
+
+@router.patch("/{payment_id}/amount")
+def update_payment_amount(
+    _admin: AdminUser,
+    payment_id: str,
+    body: UpdatePaymentRequest,
+):
+    result = payment_service.update_payment_amount(
+        payment_id=payment_id,
+        collected_amount=body.collectedAmount,
+        reason=body.reason.strip() if body.reason else None,
+        user_id=_admin["id"],
+    )
+
+    if result is None:
+        raise AppError(
+            code="PAYMENT_NOT_FOUND",
+            message="Payment record not found.",
+            status_code=404,
+        )
+
+    return success_response(
+        {
+            "payment": serialize_row(result["payment"]),
+            "correction": serialize_row(result["correction"]),
+        }
     )

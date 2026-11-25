@@ -1,6 +1,10 @@
 from typing import Any
 
 from app.config.database import get_connection
+from app.modules.billing.reprice import reprice_outstanding_bills
+from app.modules.customers.service import (
+    sync_customer_statuses_with_cursor,
+)
 
 
 def get_packages(
@@ -123,8 +127,32 @@ def update_package(
                 (package_name, monthly_amount, package_id),
             )
             package = cur.fetchone()
+
+            if package is None:
+                return None
+
+            # Keep outstanding bills on this package in step with the new
+            # name/price. Paid bills and carried arrears/credits are not
+            # rewritten.
+            cur.execute(
+                """
+                SELECT id::text AS id
+                FROM customers
+                WHERE package_id = %s
+                """,
+                (package_id,),
+            )
+            customer_ids = [row["id"] for row in cur.fetchall()]
+            repriced = reprice_outstanding_bills(
+                cur,
+                customer_ids,
+                package["package_name"],
+                package["monthly_amount"],
+            )
+
+            sync_customer_statuses_with_cursor(cur)
             conn.commit()
-            return package
+            return {**package, "repricedBills": repriced}
 
 
 def get_default_package_id() -> str | None:

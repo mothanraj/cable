@@ -1,6 +1,33 @@
 from typing import Any
 
 from app.config.database import get_connection
+from app.utils.collector_scope import (
+    collector_billing_exists,
+    collector_paid_join,
+    scoped_billing_select,
+    validate_collector_user_id,
+)
+
+MONTH_REPORT_SELECT = """
+  cbs.billing_id,
+  cbs.customer_id,
+  c.customer_name,
+  c.stb_number,
+  c.phone,
+  c.place,
+  c.assigned_user_id,
+  u.username AS assigned_username,
+  u.full_name AS assigned_user_name,
+  cbs.billing_month,
+  cbs.package_name,
+  cbs.monthly_amount,
+  cbs.arrears_amount,
+  cbs.due_amount,
+  cbs.is_effective,
+  cbs.total_paid,
+  cbs.balance_amount,
+  cbs.payment_status
+"""
 
 
 def _build_report(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -42,9 +69,25 @@ def _get_billing_report_by_month(
     user_id: str,
     role: str,
     billing_month: str | None = None,
+    collector_user_id: str | None = None,
 ) -> dict[str, Any]:
     values: list[Any] = []
     conditions: list[str] = []
+    collector_join = ""
+    select = MONTH_REPORT_SELECT
+
+    if role == "ADMIN" and collector_user_id:
+        # Placeholder order: lateral join, then WHERE conditions.
+        values.append(collector_user_id)
+        collector_join = collector_paid_join("cbs.billing_id")
+        select = scoped_billing_select(
+            MONTH_REPORT_SELECT,
+            due_expr="cbs.due_amount",
+            credit_balance_expr="cbs.credit_balance",
+            credit_adjustment_expr="cbs.credit_adjustment",
+        )
+        values.append(collector_user_id)
+        conditions.append(collector_billing_exists("cbs.billing_id"))
 
     if billing_month:
         values.append(billing_month)
@@ -61,29 +104,13 @@ def _get_billing_report_by_month(
             cur.execute(
                 f"""
                 SELECT
-                  cbs.billing_id,
-                  cbs.customer_id,
-                  c.customer_name,
-                  c.stb_number,
-                  c.phone,
-                  c.place,
-                  c.assigned_user_id,
-                  u.username AS assigned_username,
-                  u.full_name AS assigned_user_name,
-                  cbs.billing_month,
-                  cbs.package_name,
-                  cbs.monthly_amount,
-                  cbs.arrears_amount,
-                  cbs.due_amount,
-                  cbs.is_effective,
-                  cbs.total_paid,
-                  cbs.balance_amount,
-                  cbs.payment_status
+                  {select}
                 FROM customer_billing_summary cbs
                 INNER JOIN customers c
                   ON c.id = cbs.customer_id
                 INNER JOIN users u
                   ON u.id = c.assigned_user_id
+                {collector_join}
                 {where_sql}
                 ORDER BY
                   cbs.billing_month DESC,
@@ -102,8 +129,27 @@ def _get_billing_report_by_date_range(
     role: str,
     from_date: str,
     to_date: str,
+    collector_user_id: str | None = None,
 ) -> dict[str, Any]:
-    values: list[Any] = [from_date, to_date, from_date, to_date]
+    scoped = role == "ADMIN" and bool(collector_user_id)
+    values: list[Any] = [from_date, to_date]
+
+    if scoped:
+        # Payments counted toward the report are limited to this collector.
+        values.append(collector_user_id)
+
+    values.extend([from_date, to_date])
+    collector_payment_sql = ""
+    collector_bill_sql = ""
+
+    if scoped:
+        collector_payment_sql = "AND p.created_by = %s"
+        collector_bill_sql = (
+            "AND EXISTS (SELECT 1 FROM payments p "
+            "WHERE p.billing_id = mb.id AND p.created_by = %s)"
+        )
+        values.append(collector_user_id)
+
     where_sql = ""
 
     if role != "ADMIN":
@@ -123,6 +169,7 @@ def _get_billing_report_by_date_range(
                   FROM payments p
                   WHERE p.payment_date >= %s::date
                     AND p.payment_date <= %s::date
+                    {collector_payment_sql}
                   GROUP BY p.billing_id
                 ),
                 bill_scope AS (
@@ -130,6 +177,7 @@ def _get_billing_report_by_date_range(
                   FROM monthly_billing mb
                   WHERE mb.billing_month >= DATE_TRUNC('month', %s::date)::date
                     AND mb.billing_month <= DATE_TRUNC('month', %s::date)::date
+                    {collector_bill_sql}
 
                   UNION
 
@@ -150,25 +198,59 @@ def _get_billing_report_by_date_range(
                   mb.package_name,
                   mb.monthly_amount,
                   mb.arrears_amount,
-                  mb.monthly_amount + mb.arrears_amount AS due_amount,
+                  mb.credit_applied,
+                  mb.credit_balance,
+                  mb.due_adjustment,
+                  mb.credit_adjustment,
+                  GREATEST(
+                    mb.monthly_amount + mb.arrears_amount
+                    - mb.credit_applied + mb.due_adjustment,
+                    0
+                  ) AS due_amount,
                   (mb.rolled_forward_to_billing_id IS NULL) AS is_effective,
                   COALESCE(rp.total_paid, 0) AS total_paid,
                   GREATEST(
-                    mb.monthly_amount + mb.arrears_amount
-                    - COALESCE(rp.total_paid, 0),
+                    GREATEST(
+                      mb.monthly_amount + mb.arrears_amount
+                      - mb.credit_applied + mb.due_adjustment,
+                      0
+                    ) - COALESCE(rp.total_paid, 0),
                     0
                   ) AS balance_amount,
                   CASE
                     WHEN COALESCE(rp.total_paid, 0) = 0
+                      AND GREATEST(
+                            mb.monthly_amount + mb.arrears_amount
+                            - mb.credit_applied + mb.due_adjustment,
+                            0
+                          ) > 0
                       THEN 'UNPAID'
                     WHEN COALESCE(rp.total_paid, 0)
-                         < mb.monthly_amount + mb.arrears_amount
-                      THEN 'PARTIAL'
-                    WHEN COALESCE(rp.total_paid, 0)
-                         > mb.monthly_amount + mb.arrears_amount
+                         > GREATEST(
+                             mb.monthly_amount + mb.arrears_amount
+                             - mb.credit_applied + mb.due_adjustment,
+                             0
+                           )
                       THEN 'OVERPAID'
+                    WHEN COALESCE(rp.total_paid, 0)
+                         < GREATEST(
+                             mb.monthly_amount + mb.arrears_amount
+                             - mb.credit_applied + mb.due_adjustment,
+                             0
+                           )
+                      THEN 'PARTIAL'
                     ELSE 'PAID'
                   END AS payment_status,
+                  GREATEST(
+                    COALESCE(rp.total_paid, 0)
+                    - GREATEST(
+                        mb.monthly_amount + mb.arrears_amount
+                        - mb.credit_applied + mb.due_adjustment,
+                        0
+                      ),
+                    0
+                  ) + mb.credit_balance + mb.credit_adjustment
+                    AS credit_available,
                   COALESCE(rp.payment_count, 0) AS payment_count,
                   rp.last_payment_date
                 FROM monthly_billing mb
@@ -199,17 +281,22 @@ def get_billing_report(
     billing_month: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
+    collector_user_id: str | None = None,
 ) -> dict[str, Any]:
+    validate_collector_user_id(collector_user_id)
+
     if from_date and to_date:
         return _get_billing_report_by_date_range(
             user_id=user_id,
             role=role,
             from_date=from_date,
             to_date=to_date,
+            collector_user_id=collector_user_id,
         )
 
     return _get_billing_report_by_month(
         user_id=user_id,
         role=role,
         billing_month=billing_month,
+        collector_user_id=collector_user_id,
     )

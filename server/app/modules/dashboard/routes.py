@@ -17,6 +17,7 @@ BILLING_MONTH_RE = re.compile(r"^\d{4}-\d{2}-01$")
 def get_dashboard(
     user: CurrentUser,
     billingMonth: str | None = Query(default=None),
+    collectorUserId: str | None = Query(default=None),
 ):
     if billingMonth is not None and not BILLING_MONTH_RE.match(billingMonth):
         raise AppError(
@@ -32,6 +33,7 @@ def get_dashboard(
         user_id=user["id"],
         role=user["role"],
         billing_month=billingMonth,
+        collector_user_id=collectorUserId,
     )
 
     return success_response(serialize_value(dashboard))

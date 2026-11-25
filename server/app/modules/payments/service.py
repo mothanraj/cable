@@ -7,6 +7,7 @@ from app.modules.customers.service import (
     get_overdue_bills_with_cursor,
     sync_customer_statuses_with_cursor,
 )
+from app.utils.collector_scope import validate_collector_user_id
 from app.utils.errors import AppError
 
 
@@ -15,13 +16,20 @@ def get_payments(
     user_id: str,
     role: str,
     billing_id: str | None = None,
+    collector_user_id: str | None = None,
 ) -> list[dict[str, Any]]:
+    validate_collector_user_id(collector_user_id)
+
     values: list[Any] = []
     conditions: list[str] = []
 
     if billing_id:
         values.append(billing_id)
         conditions.append("p.billing_id = %s")
+
+    if role == "ADMIN" and collector_user_id:
+        values.append(collector_user_id)
+        conditions.append("p.created_by = %s")
 
     if role != "ADMIN":
         values.append(user_id)
@@ -366,3 +374,98 @@ def pay_arrears(
         "remainingArrears": total - amount,
         "reactivated": reactivated,
     }
+
+
+def update_payment_amount(
+    *,
+    payment_id: str,
+    collected_amount: float,
+    reason: str | None,
+    user_id: str,
+) -> dict[str, Any] | None:
+    """Correct a wrongly entered amount (admin only).
+
+    Due/Paid/Balance, payment_status and overpaid credit are derived by the
+    billing summary view, so changing the stored amount immediately updates
+    them. The correction itself is recorded in ``payment_corrections``.
+    """
+    amount = Decimal(str(collected_amount)).quantize(Decimal("0.01"))
+
+    if amount <= 0:
+        raise AppError(
+            code="INVALID_REQUEST",
+            message="A positive corrected amount is required.",
+            status_code=400,
+        )
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, collected_amount
+                FROM payments
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (payment_id,),
+            )
+            payment = cur.fetchone()
+
+            if payment is None:
+                return None
+
+            old_amount = payment["collected_amount"]
+
+            if amount == old_amount:
+                raise AppError(
+                    code="NO_CHANGE",
+                    message="The collected amount is already that value.",
+                    status_code=400,
+                )
+
+            cur.execute(
+                """
+                UPDATE payments
+                SET collected_amount = %s, updated_at = NOW()
+                WHERE id = %s
+                RETURNING
+                  id,
+                  billing_id,
+                  payment_date,
+                  collected_amount,
+                  remarks,
+                  created_by,
+                  created_at,
+                  updated_at
+                """,
+                (amount, payment_id),
+            )
+            updated = cur.fetchone()
+
+            cur.execute(
+                """
+                INSERT INTO payment_corrections (
+                  payment_id,
+                  old_amount,
+                  new_amount,
+                  reason,
+                  changed_by
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING
+                  id,
+                  payment_id,
+                  old_amount,
+                  new_amount,
+                  reason,
+                  changed_by,
+                  created_at
+                """,
+                (payment_id, old_amount, amount, reason, user_id),
+            )
+            correction = cur.fetchone()
+
+            sync_customer_statuses_with_cursor(cur)
+            conn.commit()
+
+    return {"payment": updated, "correction": correction}

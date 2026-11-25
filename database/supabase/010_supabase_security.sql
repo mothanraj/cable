@@ -12,6 +12,8 @@ ALTER TABLE IF EXISTS public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.user_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.schema_migrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.payment_corrections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.bill_adjustments ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -27,6 +29,8 @@ BEGIN
     EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon';
     EXECUTE 'REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon';
     EXECUTE 'REVOKE ALL ON public.customer_billing_summary FROM anon';
+    EXECUTE 'REVOKE ALL ON public.payment_corrections FROM anon';
+    EXECUTE 'REVOKE ALL ON public.bill_adjustments FROM anon';
   END IF;
 
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
@@ -34,6 +38,8 @@ BEGIN
     EXECUTE 'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM authenticated';
     EXECUTE 'REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM authenticated';
     EXECUTE 'REVOKE ALL ON public.customer_billing_summary FROM authenticated';
+    EXECUTE 'REVOKE ALL ON public.payment_corrections FROM authenticated';
+    EXECUTE 'REVOKE ALL ON public.bill_adjustments FROM authenticated';
   END IF;
 END $$;
 
